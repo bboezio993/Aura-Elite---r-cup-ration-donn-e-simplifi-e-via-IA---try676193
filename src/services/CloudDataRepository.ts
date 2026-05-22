@@ -453,7 +453,7 @@ export const CloudDataRepository = {
     // Define target collections mapped to each domain
     const domainsMapping: Record<string, string[]> = {
       metrics: ['metrics', 'activities', 'importLogs'],
-      meals: ['mealLogs', 'recipes', 'allergenBypassLogs', 'favoriteFoods', 'nutritionDrafts'],
+      meals: ['mealLogs', 'recipes', 'allergenBypassLogs', 'favoriteFoods', 'nutritionDrafts', 'foodProducts', 'userFoods', 'photoAnalyses', 'voiceDrafts', 'aiUsageLogs', 'aiCache', 'aiUsageDaily'],
       pains: ['painLogs'],
       menstrual: ['menstrualLogs'],
       hooper: ['hooperLogs', 'sessionRpeLogs', 'weeklyScreeningLogs', 'contextLogs'],

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store/useStore';
 import { BrowserMultiFormatReader } from '@zxing/library';
 import { CloudDataRepository } from '../services/CloudDataRepository';
+import { auth } from '../firebase';
 import { 
   Scan, 
   Search, 
@@ -365,25 +366,10 @@ export function BarcodeScanner({ onAddMealItem }: { onAddMealItem: (item: any) =
         <div className="relative border border-primary/20 rounded-2xl overflow-hidden bg-black max-w-sm mx-auto aspect-video flex flex-col justify-end">
           <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" />
           <div className="absolute inset-x-0 top-0 p-2 bg-gradient-to-b from-black/80 to-transparent text-[10px] text-white text-center">
-            {hasDetector ? "Détection automatique active. Présentez le code-barres." : "Détection automatique indisponible sur ce navigateur. Cadrez et tapez le code."}
+            {hasDetector ? "Détection automatique active. Présentez le code-barres." : "Détection via fallback caméra active (ZXing). Présentez le code-barres."}
           </div>
           <div className="absolute inset-0 border-2 border-emerald-500/40 m-8 rounded-lg pointer-events-none flex items-center justify-center">
             <div className="w-full h-[1px] bg-red-500/80 animate-pulse shadow-sm" />
-          </div>
-          {/* Saisie rapide pendant scan action */}
-          <div className="p-2 bg-black/80 flex justify-center z-10">
-            <Button
-              size="sm"
-              onClick={() => {
-                // Mock test scan if user wants simple emulation in local env
-                setBarcode("3017620422003"); // Famous Barcode (Nutella)
-                stopScanner();
-                handleLookup("3017620422003");
-              }}
-              className="text-[9px] h-6 px-2 bg-emerald-600 text-white font-mono font-bold"
-            >
-              Simuler Code Nutella (3017620422003)
-            </Button>
           </div>
         </div>
       )}
@@ -502,7 +488,7 @@ export function BarcodeScanner({ onAddMealItem }: { onAddMealItem: (item: any) =
                     if (!product) return;
                     const favoriteObj = {
                       id: `${product.id}_fav`,
-                      uid: store.userProfile?.general?.name || "Athlète Elite",
+                      uid: auth.currentUser?.uid || "Athlète Elite",
                       foodProductId: product.id,
                       displayName: product.productName,
                       brand: product.brand,

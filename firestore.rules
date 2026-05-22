@@ -148,6 +148,14 @@ service cloud.firestore {
              data.gad7Score is number;
     }
 
+    function isValidNutrient(nut) {
+      return nut is map &&
+             nut.isMissing is bool &&
+             nut.unit is string &&
+             ( (nut.value is number && nut.isMissing == false) ||
+               (nut.value == null && nut.isMissing == true && (!('missingReason' in nut) || nut.missingReason is string)) );
+    }
+
     function isValidAllergenBypassLog(data) {
       return data.uid is string &&
              data.id is string && data.id.size() < 200 &&
@@ -159,7 +167,11 @@ service cloud.firestore {
       return data.uid is string &&
              data.id is string && data.id.size() < 200 &&
              data.feature is string &&
-             data.inputHash is string;
+             data.inputHash is string &&
+             data.model is string &&
+             data.cached is bool &&
+             data.status in ["draft", "confirmed", "rejected", "expired"] &&
+             data.createdAt is string;
     }
 
     function isValidFoodProduct(data) {
@@ -169,29 +181,49 @@ service cloud.firestore {
              data.productName is string &&
              data.nutrimentsPer100g is map &&
              data.confidence is number &&
-             data.lastFetchedAt is string;
+             data.lastFetchedAt is string &&
+             (!('sourceCompleteness' in data) || data.sourceCompleteness is number) &&
+             (!('createdAt' in data) || data.createdAt is string) &&
+             (!('updatedAt' in data) || data.updatedAt is string) &&
+             (!('calories' in data.nutrimentsPer100g) || isValidNutrient(data.nutrimentsPer100g.calories)) &&
+             (!('protein' in data.nutrimentsPer100g) || isValidNutrient(data.nutrimentsPer100g.protein)) &&
+             (!('carbs' in data.nutrimentsPer100g) || isValidNutrient(data.nutrimentsPer100g.carbs)) &&
+             (!('fat' in data.nutrimentsPer100g) || isValidNutrient(data.nutrimentsPer100g.fat));
     }
 
     function isValidFavoriteFood(data) {
       return data.uid is string &&
              data.id is string &&
              data.foodProductId is string &&
-             data.displayName is string;
+             data.displayName is string &&
+             data.defaultPortion is number && data.defaultPortion > 0 && data.defaultPortion <= 5000 &&
+             data.defaultMealType is string && data.defaultMealType in ["Petit déjeuner", "Déjeuner", "Dîner", "En-cas", "breakfast", "lunch", "dinner", "snack"] &&
+             data.createdAt is string &&
+             (!('brand' in data) || data.brand is string) &&
+             (!('notes' in data) || data.notes is string) &&
+             (!('userNotes' in data) || data.userNotes is string) &&
+             (!('userCorrections' in data) || data.userCorrections is map);
     }
 
     function isValidNutritionDraft(data) {
       return data.uid is string &&
-             data.id is string &&
-             data.status in ["draft", "confirmed", "rejected", "expired"] &&
-             data.sourceType is string;
+             data.id is string && data.id.size() < 200 &&
+             data.status is string && data.status in ["draft", "confirmed", "rejected", "expired"] &&
+             data.sourceType is string && data.sourceType in ["barcode", "open_food_facts", "meal_photo_ai", "label_ocr", "recipe_text_ai", "voice_ai", "manual"] &&
+             data.sourceRef is string &&
+             data.extractedJson is map &&
+             data.createdAt is string &&
+             (!('updatedAt' in data) || data.updatedAt is string);
     }
 
     function isValidMigrationLog(data) {
       return data.uid is string &&
+             data.migrationDate is string &&
              data.isCompleted is bool &&
              data.schemaVersion is string &&
              data.domainsMigrated is list &&
-             data.itemCount is number;
+             data.itemCount is number &&
+             (!('errors' in data) || data.errors is list);
     }
 
     // ===============================================================

@@ -26,6 +26,7 @@ export const useAuth = () => useContext(AuthContext);
 export function FirebaseProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [checkingMigration, setCheckingMigration] = useState(false);
   const [offlineError, setOfflineError] = useState(false);
   const isMigratedToCloud = useStore(state => state.isMigratedToCloud);
   const { 
@@ -50,6 +51,49 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
     testConnection();
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        setCheckingMigration(true);
+        try {
+          const cloudMigration = await CloudDataRepository.getMigrationStatus();
+          if (cloudMigration && cloudMigration.isCompleted) {
+            console.log("[FirebaseProvider] Cloud migration is already marked complete in Firestore. Sync active.");
+            useStore.setState({ isMigratedToCloud: true });
+          } else {
+            // Check if there are any local data in Zustand/IndexedDB that represents user records
+            const currentState = useStore.getState();
+            const hasLocalData = 
+              (currentState.metrics?.length || 0) > 0 || 
+              (currentState.mealLogs?.length || 0) > 0 || 
+              (currentState.garminActivities?.length || 0) > 0 || 
+              (currentState.hooperLogs?.length || 0) > 0 || 
+              (currentState.painLogs?.length || 0) > 0 || 
+              (currentState.recipes?.length || 0) > 0 ||
+              (currentState.allergenBypassLogs?.length || 0) > 0 ||
+              (currentState.weeklyScreeningLogs?.length || 0) > 0;
+
+            if (!hasLocalData) {
+              console.log("[FirebaseProvider] No local records found. Automatically activating cloud interface and creating migration document.");
+              const blankMigration = {
+                uid: firebaseUser.uid,
+                migrationDate: new Date().toISOString(),
+                isCompleted: true,
+                schemaVersion: "1.0",
+                domainsMigrated: ["all"],
+                itemCount: 0
+              };
+              await CloudDataRepository.saveMigrationStatus(blankMigration);
+              useStore.setState({ isMigratedToCloud: true });
+            } else {
+              console.log("[FirebaseProvider] Local records exist on device. Awaiting user migration checklist.");
+              useStore.setState({ isMigratedToCloud: false });
+            }
+          }
+        } catch (err) {
+          console.error("Failed to query migration logger:", err);
+        } finally {
+          setCheckingMigration(false);
+        }
+      }
       setUser(firebaseUser);
       setLoading(false);
     });
@@ -75,7 +119,7 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  if (loading) {
+  if (loading || checkingMigration) {
     return <div className="h-screen w-screen flex flex-col items-center justify-center p-4">
       <Loader2 className="animate-spin mb-4" />
       <p>Chargement de l'espace membre...</p>

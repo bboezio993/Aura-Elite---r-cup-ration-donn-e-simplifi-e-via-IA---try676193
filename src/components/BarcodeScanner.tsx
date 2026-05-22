@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store/useStore';
-import { syncFoodProductToFirestore } from '../services/firebaseSync';
+import { BrowserMultiFormatReader } from '@zxing/library';
+import { CloudDataRepository } from '../services/CloudDataRepository';
 import { 
   Scan, 
   Search, 
@@ -29,6 +30,12 @@ export function BarcodeScanner({ onAddMealItem }: { onAddMealItem: (item: any) =
   const [hasDetector, setHasDetector] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
   
+  // Favorite state configurations
+  const [showFavConfig, setShowFavConfig] = useState(false);
+  const [favPortion, setFavPortion] = useState(100);
+  const [favMealType, setFavMealType] = useState('Déjeuner');
+  const [favNotes, setFavNotes] = useState('');
+  
   // Portion calculation state
   const [quantity, setQuantity] = useState(100);
   const [unit, setUnit] = useState('g');
@@ -45,6 +52,7 @@ export function BarcodeScanner({ onAddMealItem }: { onAddMealItem: (item: any) =
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const zxingReaderRef = useRef<BrowserMultiFormatReader | null>(null);
 
   // Check for experimental BarcodeDetector support
   useEffect(() => {
@@ -94,6 +102,20 @@ export function BarcodeScanner({ onAddMealItem }: { onAddMealItem: (item: any) =
             }
           };
           setTimeout(detectLoop, 1000);
+        } else {
+          // Robust real-world web fallback with ZXing library!
+          console.log("[Scanner] BarcodeDetector not supported. Initializing ZXing fallback...");
+          const codeReader = new BrowserMultiFormatReader();
+          zxingReaderRef.current = codeReader;
+          codeReader.decodeFromVideoDevice(undefined, videoRef.current!, (result, err) => {
+            if (result) {
+              const detected = result.getText();
+              console.log("[Scanner] Barcode detected via ZXing:", detected);
+              setBarcode(detected);
+              stopScanner();
+              handleLookup(detected);
+            }
+          });
         }
       }
     } catch (err: any) {
@@ -105,6 +127,10 @@ export function BarcodeScanner({ onAddMealItem }: { onAddMealItem: (item: any) =
 
   const stopScanner = () => {
     setScanning(false);
+    if (zxingReaderRef.current) {
+      zxingReaderRef.current.reset();
+      zxingReaderRef.current = null;
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
@@ -138,7 +164,9 @@ export function BarcodeScanner({ onAddMealItem }: { onAddMealItem: (item: any) =
         setProduct(prod);
         
         // Sync scanned master product to reusable foodProducts Firestore collection
-        syncFoodProductToFirestore(prod);
+        if (store.isMigratedToCloud) {
+          CloudDataRepository.saveFoodProduct(prod).catch(() => {});
+        }
         
         // Initialize corrections states
         setEditedName(prod.productName);
@@ -151,6 +179,16 @@ export function BarcodeScanner({ onAddMealItem }: { onAddMealItem: (item: any) =
         // Check if favorite in store
         const isFav = store.userProfile?.favoriteFoodIds?.includes(prod.id) || false;
         setIsFavorite(isFav);
+        const existingFav = store.favoriteFoods?.find(f => f.foodProductId === prod.id);
+        if (existingFav) {
+          setFavPortion(existingFav.defaultPortion);
+          setFavMealType(existingFav.defaultMealType);
+          setFavNotes(existingFav.userNotes || '');
+        } else {
+          setFavPortion(100);
+          setFavMealType('Déjeuner');
+          setFavNotes('');
+        }
       } else {
         setError(`Produit non enregistré ou introuvable pour : "${codeToLookup}". Veuillez le saisir manuellement ou tenter un OCR d'étiquette.`);
       }
@@ -167,6 +205,17 @@ export function BarcodeScanner({ onAddMealItem }: { onAddMealItem: (item: any) =
     if (!product) return;
     const isFav = !isFavorite;
     setIsFavorite(isFav);
+
+    if (isFav) {
+      setShowFavConfig(true);
+    } else {
+      // Delete favorite food document
+      const existingFav = store.favoriteFoods?.find(f => f.foodProductId === product.id);
+      if (existingFav) {
+        store.deleteFavoriteFood(existingFav.id);
+      }
+      setShowFavConfig(false);
+    }
 
     const fIds = store.userProfile?.favoriteFoodIds || [];
     let updated: string[];
@@ -217,7 +266,9 @@ export function BarcodeScanner({ onAddMealItem }: { onAddMealItem: (item: any) =
           fat: { ...product.nutrimentsPer100g.fat, value: editedFat, isMissing: false },
         }
       };
-      syncFoodProductToFirestore(correctedProduct);
+      if (store.isMigratedToCloud) {
+        CloudDataRepository.saveFoodProduct(correctedProduct).catch(() => {});
+      }
     }
 
     onAddMealItem({
@@ -279,6 +330,36 @@ export function BarcodeScanner({ onAddMealItem }: { onAddMealItem: (item: any) =
           </Button>
         </div>
       </div>
+
+      {/* Cloud Food Favorites list quick-add */}
+      {store.favoriteFoods && store.favoriteFoods.length > 0 && !product && (
+        <div className="p-3 border rounded-xl bg-orange-500/5 border-orange-200/20 space-y-2">
+          <h6 className="font-bold text-[10px] uppercase text-orange-600 flex items-center gap-1.5">
+            <Heart size={12} className="fill-current text-red-400" />
+            Favoris alimentaires Cloud
+          </h6>
+          <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-thin">
+            {store.favoriteFoods.map((fav) => (
+              <button
+                key={fav.id}
+                type="button"
+                onClick={() => {
+                  setBarcode(fav.foodProductId);
+                  handleLookup(fav.foodProductId);
+                }}
+                className="flex-shrink-0 text-left p-2 border border-border bg-background rounded-lg hover:border-orange-500/30 hover:shadow-sm transition-all max-w-[140px]"
+              >
+                <p className="font-semibold text-[11px] text-foreground truncate">{fav.displayName}</p>
+                <p className="text-[9px] text-muted-foreground truncate">{fav.brand || "Marque inconnue"}</p>
+                <div className="mt-1 flex items-center gap-1 text-[8px] text-muted-foreground font-mono">
+                  <span>{fav.defaultPortion}g</span>
+                  <span className="bg-secondary px-1 py-0.5 rounded text-[8px] truncate">{fav.defaultMealType}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {scanning && (
         <div className="relative border border-primary/20 rounded-2xl overflow-hidden bg-black max-w-sm mx-auto aspect-video flex flex-col justify-end">
@@ -363,6 +444,83 @@ export function BarcodeScanner({ onAddMealItem }: { onAddMealItem: (item: any) =
               </div>
             </div>
           </div>
+
+          {/* Favorite Cloud configuration form */}
+          {showFavConfig && (
+            <div className="p-3 bg-red-500/5 rounded-xl border border-red-500/10 space-y-3">
+              <div className="flex justify-between items-center pb-1 border-b border-red-500/10">
+                <h6 className="font-bold text-[10px] uppercase text-red-500 flex items-center gap-1">
+                  <Heart size={12} className="fill-current text-red-500" />
+                  Configuration du favori Cloud
+                </h6>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setShowFavConfig(false)}
+                  className="h-5 px-1.5 text-[8px] font-bold text-muted-foreground hover:bg-transparent"
+                >
+                  Masquer
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[9px] font-bold text-muted-foreground block mb-0.5">Portion habituelle :</label>
+                  <input
+                    type="number"
+                    value={favPortion}
+                    onChange={(e) => setFavPortion(Number(e.target.value))}
+                    className="w-full text-xs rounded border border-border bg-background p-1 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] font-bold text-muted-foreground block mb-0.5">Repas habituel :</label>
+                  <select
+                    value={favMealType}
+                    onChange={(e) => setFavMealType(e.target.value)}
+                    className="w-full text-xs rounded border border-border bg-background p-1"
+                  >
+                    <option value="Petit déjeuner">Petit déjeuner</option>
+                    <option value="Déjeuner">Déjeuner</option>
+                    <option value="Dîner">Dîner</option>
+                    <option value="En-cas">En-cas</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-[9px] font-bold text-muted-foreground block mb-0.5">Notes / Instructions :</label>
+                <textarea
+                  value={favNotes}
+                  onChange={(e) => setFavNotes(e.target.value)}
+                  placeholder="Ex: 3 biscuits par portion, excellente digestibilité pré-effort..."
+                  className="w-full text-xs rounded border border-border bg-background p-1 h-12 resize-none"
+                />
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (!product) return;
+                    const favoriteObj = {
+                      id: `${product.id}_fav`,
+                      uid: store.userProfile?.general?.name || "Athlète Elite",
+                      foodProductId: product.id,
+                      displayName: product.productName,
+                      brand: product.brand,
+                      defaultPortion: favPortion,
+                      defaultMealType: favMealType,
+                      userNotes: favNotes,
+                      createdAt: new Date().toISOString()
+                    };
+                    store.addFavoriteFood(favoriteObj);
+                    setShowFavConfig(false);
+                  }}
+                  className="bg-red-500 hover:bg-red-600 text-white font-bold h-7 px-3 text-[10px] rounded-md"
+                >
+                  Sauvegarder favori Cloud
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* Form modifications inside */}
           {isEditing ? (

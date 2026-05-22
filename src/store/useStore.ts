@@ -3,20 +3,7 @@ import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { get, set as idbSet, del } from 'idb-keyval';
 import { NormalizedMetric, ConnectionState, DataSource, UserProfile, MenstrualLog, GarminImportLog, GarminActivity, HooperLog, SessionRPE, LifeContextLog, EngineScores, WeeklyScreeningLog, MealLog, PainLog, RejectedMetric, Recipe, AllergenBypassLog } from '../types';
 import { runAnalysisEngine } from '../services/analysisEngine/engine';
-import { 
-  syncProfileToFirestore, 
-  syncMealLogToFirestore, 
-  deleteMealLogFromFirestore, 
-  syncRecipeToFirestore, 
-  deleteRecipeFromFirestore, 
-  syncHooperLogToFirestore, 
-  syncSessionRpeToFirestore, 
-  syncPainLogToFirestore, 
-  syncMenstrualLogToFirestore, 
-  syncContextLogToFirestore, 
-  syncAllergenBypassLogToFirestore,
-  syncWeeklyScreeningLogToFirestore
-} from '../services/firebaseSync';
+import { CloudDataRepository, FavoriteFood } from '../services/CloudDataRepository';
 import { metricRegistry } from '../domain/metrics/metricRegistry';
 import { createValidatedMetric } from '../domain/metrics/metricFactory';
 
@@ -50,6 +37,7 @@ export interface AppState {
   engineScores: EngineScores | null;
   recipes: Recipe[];
   allergenBypassLogs: AllergenBypassLog[];
+  favoriteFoods: FavoriteFood[];
   isMigratedToCloud?: boolean;
   addMetric: (metric: NormalizedMetric) => void;
   addMetrics: (metrics: NormalizedMetric[]) => void;
@@ -69,6 +57,8 @@ export interface AppState {
   addAllergenBypassLog: (log: AllergenBypassLog) => void;
   addRecipe: (recipe: Recipe) => void;
   deleteRecipe: (id: string) => void;
+  addFavoriteFood: (fav: FavoriteFood) => void;
+  deleteFavoriteFood: (id: string) => void;
   computeEngineScores: () => void;
   exportLocalData: () => string;
   clearDomainData: (domain: "metrics" | "meals" | "pains" | "menstrual" | "hooper" | "all") => void;
@@ -118,6 +108,7 @@ export const useStore = create<AppState>()(
       engineScores: null,
       recipes: [],
       allergenBypassLogs: [],
+      favoriteFoods: [],
       isMigratedToCloud: undefined,
       addMetric: (metric) => {
         const result = createValidatedMetric({
@@ -150,7 +141,12 @@ export const useStore = create<AppState>()(
           return;
         }
         const validated = result.metric!;
-        set((state) => ({ metrics: [...state.metrics, validated] }));
+        set((state) => {
+          if (state.isMigratedToCloud) {
+            CloudDataRepository.saveMetrics([validated]).catch(() => {});
+          }
+          return { metrics: [...state.metrics, validated] };
+        });
         get().computeEngineScores();
       },
       addMetrics: (metrics) => {
@@ -191,6 +187,9 @@ export const useStore = create<AppState>()(
               metricMap.set(m.id, m);
             }
           });
+          if (state.isMigratedToCloud) {
+            CloudDataRepository.saveMetrics(validMetrics).catch(() => {});
+          }
           return {
             metrics: Array.from(metricMap.values()),
             rejectedMetrics: [...state.rejectedMetrics, ...rejected]
@@ -216,26 +215,41 @@ export const useStore = create<AppState>()(
       updateUserProfile: (profile) => {
         set((state) => {
            const newProfile = { ...state.userProfile, ...profile };
-           // Don't sync if called from the firebase real-time listener (usually profile comes fully populated and matching)
-           // If called from the UI, we should sync to firestore
-           syncProfileToFirestore(newProfile).catch(() => {});
+           if (state.isMigratedToCloud) {
+             CloudDataRepository.saveUserProfile(newProfile).catch(() => {});
+           }
            return { userProfile: newProfile };
         });
       },
       addMenstrualLog: (log) => set((state) => {
-        syncMenstrualLogToFirestore(log).catch(() => {});
+        if (state.isMigratedToCloud) {
+          CloudDataRepository.saveMenstrualLog(log).catch(() => {});
+        }
         return { menstrualLogs: [...state.menstrualLogs, log] };
       }),
-      addGarminImportLog: (log) => set((state) => ({ garminImportLogs: [log, ...state.garminImportLogs] })),
-      updateGarminImportLog: (id, updates) => set((state) => ({
-        garminImportLogs: state.garminImportLogs.map(log => log.id === id ? { ...log, ...updates } : log)
-      })),
+      addGarminImportLog: (log) => set((state) => {
+        if (state.isMigratedToCloud) {
+          CloudDataRepository.saveGarminImportLog(log).catch(() => {});
+        }
+        return { garminImportLogs: [log, ...state.garminImportLogs] };
+      }),
+      updateGarminImportLog: (id, updates) => set((state) => {
+        const updatedLogs = state.garminImportLogs.map(log => log.id === id ? { ...log, ...updates } : log);
+        const targetLog = updatedLogs.find(l => l.id === id);
+        if (state.isMigratedToCloud && targetLog) {
+          CloudDataRepository.saveGarminImportLog(targetLog).catch(() => {});
+        }
+        return { garminImportLogs: updatedLogs };
+      }),
       addGarminActivities: (activities) => {
         set((state) => {
           const activityMap = new Map(state.garminActivities.map(a => [a.id, a]));
           activities.forEach(a => {
             activityMap.set(a.id, a); // Upsert activity
           });
+          if (state.isMigratedToCloud) {
+            CloudDataRepository.saveActivities(activities).catch(() => {});
+          }
           // Sort by date descending
           const sortedActivities = Array.from(activityMap.values()).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
           return { garminActivities: sortedActivities };
@@ -249,7 +263,9 @@ export const useStore = create<AppState>()(
       },
       addHooperLog: (log) => {
         set((state) => {
-          syncHooperLogToFirestore(log).catch(() => {});
+          if (state.isMigratedToCloud) {
+            CloudDataRepository.saveHooperLog(log).catch(() => {});
+          }
           const filtered = state.hooperLogs.filter(l => l.date !== log.date);
           return { hooperLogs: [...filtered, log].sort((a, b) => a.date.localeCompare(b.date)) };
         });
@@ -257,7 +273,9 @@ export const useStore = create<AppState>()(
       },
       addSessionRPE: (log) => {
         set((state) => {
-          syncSessionRpeToFirestore(log).catch(() => {});
+          if (state.isMigratedToCloud) {
+            CloudDataRepository.saveSessionRpe(log).catch(() => {});
+          }
           const filtered = state.sessionRpeLogs.filter(l => l.activityId !== log.activityId);
           return { sessionRpeLogs: [...filtered, log] };
         });
@@ -265,7 +283,9 @@ export const useStore = create<AppState>()(
       },
       addWeeklyScreeningLog: (log) => {
         set((state) => {
-          syncWeeklyScreeningLogToFirestore(log).catch(() => {});
+          if (state.isMigratedToCloud) {
+            CloudDataRepository.saveWeeklyScreeningLog(log).catch(() => {});
+          }
           const filtered = state.weeklyScreeningLogs.filter(l => l.date !== log.date);
           return { weeklyScreeningLogs: [...filtered, log].sort((a, b) => a.date.localeCompare(b.date)) };
         });
@@ -273,16 +293,19 @@ export const useStore = create<AppState>()(
       },
       addMealLog: (log) => {
         set((state) => {
-          syncMealLogToFirestore(log).catch(() => {});
+          if (state.isMigratedToCloud) {
+            CloudDataRepository.saveMealLog(log).catch(() => {});
+          }
           const filtered = state.mealLogs.filter(l => l.id !== log.id);
           return { mealLogs: [...filtered, log] };
         });
-        // Integrate into global metrics so that nutrition calculations get processed in real-time
         get().computeEngineScores();
       },
       deleteMealLog: (id) => {
         set((state) => {
-          deleteMealLogFromFirestore(id).catch(() => {});
+          if (state.isMigratedToCloud) {
+            CloudDataRepository.deleteMealLog(id).catch(() => {});
+          }
           return {
             mealLogs: state.mealLogs.filter(l => l.id !== id)
           };
@@ -291,7 +314,9 @@ export const useStore = create<AppState>()(
       },
       addPainLog: (log) => {
         set((state) => {
-          syncPainLogToFirestore(log).catch(() => {});
+          if (state.isMigratedToCloud) {
+            CloudDataRepository.savePainLog(log).catch(() => {});
+          }
           const filtered = state.painLogs.filter(l => l.id !== log.id);
           return { painLogs: [...filtered, log] };
         });
@@ -299,7 +324,9 @@ export const useStore = create<AppState>()(
       },
       addContextLog: (log) => {
         set((state) => {
-          syncContextLogToFirestore(log).catch(() => {});
+          if (state.isMigratedToCloud) {
+            CloudDataRepository.saveContextLog(log).catch(() => {});
+          }
           const filtered = state.contextLogs.filter(l => l.id !== log.id);
           return { contextLogs: [...filtered, log] };
         });
@@ -307,22 +334,49 @@ export const useStore = create<AppState>()(
       },
       addAllergenBypassLog: (log) => {
         set((state) => {
-          syncAllergenBypassLogToFirestore(log).catch(() => {});
+          if (state.isMigratedToCloud) {
+            CloudDataRepository.saveAllergenBypassLog(log).catch(() => {});
+          }
           return { allergenBypassLogs: [...(state.allergenBypassLogs || []), log] };
         });
       },
       addRecipe: (recipe) => {
         set((state) => {
-          syncRecipeToFirestore(recipe).catch(() => {});
+          if (state.isMigratedToCloud) {
+            CloudDataRepository.saveRecipe(recipe).catch(() => {});
+          }
           const filtered = (state.recipes || []).filter(r => r.id !== recipe.id);
           return { recipes: [...filtered, recipe] };
         });
       },
       deleteRecipe: (id) => {
         set((state) => {
-          deleteRecipeFromFirestore(id).catch(() => {});
+          if (state.isMigratedToCloud) {
+            CloudDataRepository.deleteRecipe(id).catch(() => {});
+          }
           return {
             recipes: (state.recipes || []).filter(r => r.id !== id)
+          };
+        });
+      },
+      addFavoriteFood: (fav) => {
+        set((state) => {
+          if (state.isMigratedToCloud) {
+            CloudDataRepository.saveFavoriteFood(fav).catch(() => {});
+          }
+          const filtered = (state.favoriteFoods || []).filter(f => f.id !== fav.id);
+          return {
+            favoriteFoods: [...filtered, fav]
+          };
+        });
+      },
+      deleteFavoriteFood: (id) => {
+        set((state) => {
+          if (state.isMigratedToCloud) {
+            CloudDataRepository.deleteFavoriteFood(id).catch(() => {});
+          }
+          return {
+            favoriteFoods: (state.favoriteFoods || []).filter(f => f.id !== id)
           };
         });
       },

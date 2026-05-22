@@ -158,9 +158,40 @@ service cloud.firestore {
     function isValidAiUsageLog(data) {
       return data.uid is string &&
              data.id is string && data.id.size() < 200 &&
-             data.modelId is string &&
              data.feature is string &&
              data.inputHash is string;
+    }
+
+    function isValidFoodProduct(data) {
+      return data.uid is string &&
+             (data.id is string || data.barcode is string) &&
+             data.source is string &&
+             data.productName is string &&
+             data.nutrimentsPer100g is map &&
+             data.confidence is number &&
+             data.lastFetchedAt is string;
+    }
+
+    function isValidFavoriteFood(data) {
+      return data.uid is string &&
+             data.id is string &&
+             data.foodProductId is string &&
+             data.displayName is string;
+    }
+
+    function isValidNutritionDraft(data) {
+      return data.uid is string &&
+             data.id is string &&
+             data.status in ["draft", "confirmed", "rejected", "expired"] &&
+             data.sourceType is string;
+    }
+
+    function isValidMigrationLog(data) {
+      return data.uid is string &&
+             data.isCompleted is bool &&
+             data.schemaVersion is string &&
+             data.domainsMigrated is list &&
+             data.itemCount is number;
     }
 
     // ===============================================================
@@ -267,9 +298,30 @@ service cloud.firestore {
 
     match /foodProducts/{productId} {
       allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
-      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
-      allow update: if isAuthenticated() && resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && isValidFoodProduct(request.resource.data) && request.resource.data.uid == request.auth.uid;
+      allow update: if isAuthenticated() && resource.data.uid == request.auth.uid && isValidFoodProduct(request.resource.data) && request.resource.data.uid == request.auth.uid;
       allow delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
+    }
+
+    match /favoriteFoods/{favId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && isValidFavoriteFood(request.resource.data) && request.resource.data.uid == request.auth.uid;
+      allow update: if isAuthenticated() && resource.data.uid == request.auth.uid && isValidFavoriteFood(request.resource.data) && request.resource.data.uid == request.auth.uid;
+      allow delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
+    }
+
+    match /nutritionDrafts/{draftId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && isValidNutritionDraft(request.resource.data) && request.resource.data.uid == request.auth.uid;
+      allow update: if isAuthenticated() && resource.data.uid == request.auth.uid && isValidNutritionDraft(request.resource.data) && request.resource.data.uid == request.auth.uid;
+      allow delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
+    }
+
+    match /migrationLogs/{userId} {
+      allow read: if isAuthenticated() && userId == request.auth.uid;
+      allow create: if isAuthenticated() && userId == request.auth.uid && isValidMigrationLog(request.resource.data);
+      allow update: if isAuthenticated() && userId == request.auth.uid && isValidMigrationLog(request.resource.data);
+      allow delete: if isAuthenticated() && userId == request.auth.uid;
     }
   }
 }

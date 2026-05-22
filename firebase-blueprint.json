@@ -1,0 +1,158 @@
+{
+  "entities": {
+    "GarminMetric": {
+      "title": "Garmin Metric",
+      "description": "Represents a single parsed biometric or wellness metric (sleep, HRV, RHR).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier for the metric" },
+        "source": { "type": "string", "description": "Source of the metric (e.g., garmin)" },
+        "sourceId": { "type": "string", "description": "ID of the import log" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "ISO timestamp of the metric" },
+        "type": { "type": "string", "description": "Type of metric (sleep_duration, sleep_quality, rhr, hrv_rmssd)" },
+        "value": { "type": "number", "description": "Numeric value of the metric" },
+        "unit": { "type": "string", "description": "Unit (e.g., h, ms, bpm)" },
+        "confidenceScore": { "type": "number", "description": "Confidence of the parsing" },
+        "uid": { "type": "string", "description": "User ID owning the metric" }
+      },
+      "required": ["id", "source", "timestamp", "type", "value", "uid"]
+    },
+    "GarminImportLog": {
+      "title": "Garmin Import Log",
+      "description": "Log of an import action.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier" },
+        "importDate": { "type": "string", "format": "date-time" },
+        "filename": { "type": "string" },
+        "status": { "type": "string", "enum": ["success", "error", "partial", "processing", "warning"] },
+        "recordsAdded": { "type": "number" },
+        "errorMessage": { "type": "string" },
+        "uid": { "type": "string", "description": "User ID owning the log" }
+      },
+      "required": ["id", "importDate", "filename", "status", "recordsAdded", "uid"]
+    },
+    "GarminActivity": {
+      "title": "Garmin Activity",
+      "description": "A single workout/activity imported from Garmin.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "type": { "type": "string" },
+        "date": { "type": "string" },
+        "duration": { "type": "string" },
+        "distance": { "type": "number" },
+        "calories": { "type": "number" },
+        "tss": { "type": "number" },
+        "uid": { "type": "string", "description": "User ID owning the activity" }
+      },
+      "required": ["id", "title", "type", "date", "duration", "distance", "calories", "uid"]
+    },
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "User physiology and account settings.",
+      "type": "object",
+      "properties": {
+        "age": { "type": "number" },
+        "weight": { "type": "number" },
+        "height": { "type": "number" },
+        "maxHr": { "type": "number" },
+        "restingHr": { "type": "number" },
+        "ftp": { "type": "number" },
+        "uid": { "type": "string", "description": "User ID" }
+      },
+      "required": ["uid"]
+    },
+    "MealLog": {
+      "title": "Meal Log",
+      "description": "Represents a dietary log entries.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "mealType": { "type": "string" },
+        "items": { "type": "array" },
+        "uid": { "type": "string" }
+      },
+      "required": ["id", "date", "mealType", "items", "uid"]
+    },
+    "Recipe": {
+      "title": "Recipe",
+      "description": "User custom compiled recipe.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "items": { "type": "array" },
+        "uid": { "type": "string" }
+      },
+      "required": ["id", "name", "items", "uid"]
+    },
+    "HooperLog": {
+      "title": "Hooper Fatigue Log",
+      "description": "Extended standard scale subjective well-being tracking.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "fatigue": { "type": "number" },
+        "stress": { "type": "number" },
+        "sleepQuality": { "type": "number" },
+        "soreness": { "type": "number" },
+        "mood": { "type": "number" },
+        "uid": { "type": "string" }
+      },
+      "required": ["id", "date", "fatigue", "stress", "sleepQuality", "soreness", "mood", "uid"]
+    },
+    "SessionRPE": {
+      "title": "Session RPE",
+      "description": "Workout perceived exertion and feedback metrics.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "activityId": { "type": "string" },
+        "date": { "type": "string" },
+        "rpe": { "type": "number" },
+        "durationMinutes": { "type": "number" },
+        "feeling": { "type": "number" },
+        "uid": { "type": "string" }
+      },
+      "required": ["id", "date", "rpe", "durationMinutes", "feeling", "uid"]
+    }
+  },
+  "firestore": {
+    "/metrics/{metricId}": {
+      "schema": { "$ref": "#/entities/GarminMetric" },
+      "description": "A top level collection of metrics, secured by uid"
+    },
+    "/importLogs/{logId}": {
+      "schema": { "$ref": "#/entities/GarminImportLog" },
+      "description": "A top level collection of import logs, secured by uid"
+    },
+    "/activities/{activityId}": {
+      "schema": { "$ref": "#/entities/GarminActivity" },
+      "description": "A top level collection of activities, secured by uid"
+    },
+    "/profiles/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles, ID is user uid"
+    },
+    "/mealLogs/{mealLogId}": {
+      "schema": { "$ref": "#/entities/MealLog" },
+      "description": "Nutrient log containing detailed foods eaten per day"
+    },
+    "/recipes/{recipeId}": {
+      "schema": { "$ref": "#/entities/Recipe" },
+      "description": "Registered customized recipes"
+    },
+    "/hooperLogs/{hooperId}": {
+      "schema": { "$ref": "#/entities/HooperLog" },
+      "description": "Daily athletic readiness questionnaires"
+    },
+    "/sessionRpeLogs/{rpeId}": {
+      "schema": { "$ref": "#/entities/SessionRPE" },
+      "description": "Workout rating of perceived exertion subjective values"
+    }
+  }
+}

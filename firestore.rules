@@ -1,0 +1,268 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net: Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.uid;
+    }
+    
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid;
+    }
+    
+    function uidNotModified() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == resource.data.uid;
+    }
+    
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidMetric(data) {
+      return data.uid is string &&
+             data.id is string && data.id.size() < 200 &&
+             data.source is string && data.source.size() < 50 &&
+             data.timestamp is string && data.timestamp.size() < 50 &&
+             data.type is string && data.type.size() < 100 &&
+             data.value is number &&
+             (!('confidenceScore' in data) || data.confidenceScore is number || data.confidenceScore == null) &&
+             (!('sourceId' in data) || data.sourceId is string || data.sourceId == null) &&
+             (!('unit' in data) || data.unit is string || data.unit == null);
+    }
+
+    function isValidImportLog(data) {
+      return data.uid is string &&
+             data.id is string && data.id.size() < 200 &&
+             data.importDate is string && data.importDate.size() < 50 &&
+             data.filename is string && data.filename.size() < 500 &&
+             data.status is string && data.status in ["success", "error", "partial", "processing", "warning", "duplicate"] &&
+             data.recordsAdded is number &&
+             (!('errorMessage' in data) || data.errorMessage is string || data.errorMessage == null);
+    }
+
+    function isValidActivity(data) {
+      return data.uid is string &&
+             data.id is string && data.id.size() < 200 &&
+             data.title is string && data.title.size() < 200 &&
+             data.type is string && data.type.size() < 100 &&
+             data.date is string && data.date.size() < 50 &&
+             data.duration is string && data.duration.size() < 50 &&
+             (!('distance' in data) || data.distance is number || data.distance == null) &&
+             (!('calories' in data) || data.calories is number || data.calories == null) &&
+             (!('avgHeartRate' in data) || data.avgHeartRate is number || data.avgHeartRate == null) &&
+             (!('maxHeartRate' in data) || data.maxHeartRate is number || data.maxHeartRate == null) &&
+             (!('tss' in data) || data.tss is number || data.tss == null) &&
+             (!('sourceId' in data) || data.sourceId is string || data.sourceId == null);
+    }
+
+    function isValidProfile(data) {
+      return data.uid is string;
+    }
+
+    function isValidMealLog(data) {
+      return data.uid is string &&
+             data.id is string && data.id.size() < 200 &&
+             data.date is string && data.date.size() < 50 &&
+             data.mealType is string && data.mealType.size() < 100 &&
+             data.items is list;
+    }
+    
+    function isValidRecipe(data) {
+      return data.uid is string &&
+             data.id is string && data.id.size() < 200 &&
+             data.name is string && data.name.size() < 300 &&
+             data.items is list;
+    }
+    
+    function isValidHooperLog(data) {
+      return data.uid is string &&
+             data.id is string && data.id.size() < 200 &&
+             data.date is string && data.date.size() < 50 &&
+             data.fatigue is number &&
+             data.stress is number &&
+             data.sleepQuality is number &&
+             data.soreness is number &&
+             data.mood is number;
+    }
+    
+    function isValidSessionRpe(data) {
+      return data.uid is string &&
+             data.id is string && data.id.size() < 200 &&
+             data.rpe is number &&
+             data.durationMinutes is number &&
+             data.feeling is number;
+    }
+    
+    function isValidPainLog(data) {
+      return data.uid is string &&
+             data.id is string && data.id.size() < 200 &&
+             data.date is string && data.date.size() < 50 &&
+             data.location is string && data.location.size() < 150 &&
+             data.side is string &&
+             data.type is string &&
+             data.intensityRest is number &&
+             data.intensityActive is number &&
+             data.onset is string;
+    }
+    
+    function isValidMenstrualLog(data) {
+      return data.uid is string &&
+             data.id is string && data.id.size() < 200 &&
+             data.date is string && data.date.size() < 50 &&
+             data.flow is string &&
+             data.painLevel is number &&
+             data.sleepQuality is number;
+    }
+    
+    function isValidContextLog(data) {
+      return data.uid is string &&
+             data.id is string && data.id.size() < 200 &&
+             data.date is string && data.date.size() < 50 &&
+             data.travel is bool &&
+             data.jetlag is bool &&
+             data.alcohol is bool &&
+             data.lateMeal is bool;
+    }
+    
+    function isValidWeeklyScreeningLog(data) {
+      return data.uid is string &&
+             data.id is string && data.id.size() < 200 &&
+             data.date is string && data.date.size() < 50 &&
+             data.pssScore is number &&
+             data.phq9Score is number &&
+             data.gad7Score is number;
+    }
+
+    function isValidAllergenBypassLog(data) {
+      return data.uid is string &&
+             data.id is string && data.id.size() < 200 &&
+             data.foodId is string &&
+             data.allergenDetected is string;
+    }
+
+    function isValidAiUsageLog(data) {
+      return data.uid is string &&
+             data.id is string && data.id.size() < 200 &&
+             data.modelId is string &&
+             data.feature is string &&
+             data.inputHash is string;
+    }
+
+    // ===============================================================
+    // Collections
+    // ===============================================================
+    
+    match /metrics/{metricId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && isValidMetric(request.resource.data) && uidUnchanged();
+      allow update: if isDocOwner() && isValidMetric(request.resource.data) && uidNotModified();
+      allow delete: if isDocOwner();
+    }
+
+    match /importLogs/{logId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && isValidImportLog(request.resource.data) && uidUnchanged();
+      allow update: if isDocOwner() && isValidImportLog(request.resource.data) && uidNotModified();
+      allow delete: if isDocOwner();
+    }
+
+    match /activities/{activityId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && isValidActivity(request.resource.data) && uidUnchanged();
+      allow update: if isDocOwner() && isValidActivity(request.resource.data) && uidNotModified();
+      allow delete: if isDocOwner();
+    }
+
+    match /profiles/{userId} {
+      allow read: if isAuthenticated() && userId == request.auth.uid;
+      allow create: if isAuthenticated() && userId == request.auth.uid && isValidProfile(request.resource.data) && uidUnchanged();
+      allow update: if isAuthenticated() && userId == request.auth.uid && isValidProfile(request.resource.data) && uidNotModified();
+      allow delete: if false;
+    }
+
+    match /mealLogs/{mealLogId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && isValidMealLog(request.resource.data) && uidUnchanged();
+      allow update: if isDocOwner() && isValidMealLog(request.resource.data) && uidNotModified();
+      allow delete: if isDocOwner();
+    }
+
+    match /recipes/{recipeId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && isValidRecipe(request.resource.data) && uidUnchanged();
+      allow update: if isDocOwner() && isValidRecipe(request.resource.data) && uidNotModified();
+      allow delete: if isDocOwner();
+    }
+
+    match /hooperLogs/{hooperId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && isValidHooperLog(request.resource.data) && uidUnchanged();
+      allow update: if isDocOwner() && isValidHooperLog(request.resource.data) && uidNotModified();
+      allow delete: if isDocOwner();
+    }
+
+    match /sessionRpeLogs/{rpeId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && isValidSessionRpe(request.resource.data) && uidUnchanged();
+      allow update: if isDocOwner() && isValidSessionRpe(request.resource.data) && uidNotModified();
+      allow delete: if isDocOwner();
+    }
+
+    match /painLogs/{painId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && isValidPainLog(request.resource.data) && uidUnchanged();
+      allow update: if isDocOwner() && isValidPainLog(request.resource.data) && uidNotModified();
+      allow delete: if isDocOwner();
+    }
+
+    match /menstrualLogs/{menstrualId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && isValidMenstrualLog(request.resource.data) && uidUnchanged();
+      allow update: if isDocOwner() && isValidMenstrualLog(request.resource.data) && uidNotModified();
+      allow delete: if isDocOwner();
+    }
+
+    match /contextLogs/{contextId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && isValidContextLog(request.resource.data) && uidUnchanged();
+      allow update: if isDocOwner() && isValidContextLog(request.resource.data) && uidNotModified();
+      allow delete: if isDocOwner();
+    }
+
+    match /weeklyScreeningLogs/{screeningId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && isValidWeeklyScreeningLog(request.resource.data) && uidUnchanged();
+      allow update: if isDocOwner() && isValidWeeklyScreeningLog(request.resource.data) && uidNotModified();
+      allow delete: if isDocOwner();
+    }
+
+    match /allergenBypassLogs/{logId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && isValidAllergenBypassLog(request.resource.data) && uidUnchanged();
+      allow update: if isDocOwner() && isValidAllergenBypassLog(request.resource.data) && uidNotModified();
+      allow delete: if isDocOwner();
+    }
+
+    match /aiUsageLogs/{usageId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && isValidAiUsageLog(request.resource.data) && uidUnchanged();
+      allow update: if isDocOwner() && isValidAiUsageLog(request.resource.data) && uidNotModified();
+      allow delete: if isDocOwner();
+    }
+  }
+}

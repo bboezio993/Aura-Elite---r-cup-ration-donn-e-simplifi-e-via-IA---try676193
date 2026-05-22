@@ -231,6 +231,35 @@ export function Confidentiality() {
         </Card>
       </div>
 
+      <Card className="border-border/80 bg-secondary/15">
+        <CardHeader>
+          <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
+            <Database size={16} />
+            Architecture d'Isolation de Données Cloud Firestore
+          </CardTitle>
+          <CardDescription>
+            Audit de conformité de la structure d'isolement de Aura Elite Next.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-xs leading-relaxed text-muted-foreground">
+          <p>
+            Par souci de flexibilité de requêtage parallèle et d'évolutivité des métriques croisées de l'athlète, l'architecture d'Aura Elite a statué sur un modèle de <strong>collections de premier niveau (Top-Level)</strong> plutôt que des collections imbriquées sous une racine <code className="font-mono bg-secondary/40 px-1 py-0.5 rounded text-[11px]">/users/&#123;uid&#125;</code>.
+          </p>
+          <div className="p-3.5 bg-background/50 rounded-xl border border-border/60 space-y-2">
+            <div className="flex items-center gap-1.5 font-bold text-foreground">
+              <span className="text-emerald-500">🛡️</span>
+              <span>Garantie de Sécurité Chiffrée</span>
+            </div>
+            <p className="text-[11px]">
+              L'étanchéité absolue de vos données d'un athlète à l'autre est garantie par des <strong>Règles de Sécurité Firestore rigoureusement durcies</strong> à chaque livraison. Aucun document ne peut être lu, mis à jour ou créé si le champ caché <code className="font-mono bg-secondary/40 px-1 py-0.5 rounded text-[10px]">uid</code> rattaché au document ne coïncide pas exactement avec l'identifiant chiffré (<code className="font-mono bg-secondary/40 px-1 py-0.5 rounded text-[10px]">request.auth.uid</code>) fourni par le module de connexion d'authentification Google/Firebase.
+            </p>
+          </div>
+          <p>
+            Cela élimine de manière permanente les risques de fuites collatérales tout en maintenant une indexation et des performances maximales lors du calcul de vos indicateurs physiologiques par l'Analytics Engine.
+          </p>
+        </CardContent>
+      </Card>
+
       <Card className="border-red-500/20 bg-red-500/5">
         <CardHeader>
           <CardTitle className="text-red-400 flex items-center gap-2">

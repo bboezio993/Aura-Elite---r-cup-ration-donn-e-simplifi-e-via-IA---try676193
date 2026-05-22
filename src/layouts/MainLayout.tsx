@@ -12,13 +12,28 @@ import {
   User,
   ChevronRight,
   Link as LinkIcon,
-  ShieldAlert
+  ShieldAlert,
+  Cloud,
+  CloudOff,
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { CloudMigrationAssistant } from '../components/CloudMigrationAssistant';
+import { useStore } from '../store/useStore';
 
 export function MainLayout() {
+  const syncStatuses = useStore(state => state.syncStatuses) || {};
+  const retrySync = useStore(state => state.retrySync);
+  const isMigratedToCloud = useStore(state => state.isMigratedToCloud);
+
+  const syncItems = Object.values(syncStatuses);
+  const pendingCount = syncItems.filter(i => i.status === 'pending').length;
+  const failedCount = syncItems.filter(i => i.status === 'failed').length;
+
+  const [isOpen, setIsOpen] = React.useState(false);
+
   return (
     <div className="min-h-screen bg-background text-foreground flex">
       {/* Cloud Migration Assistant */}
@@ -73,7 +88,82 @@ export function MainLayout() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            {/* Header actions will be injected by pages if needed, or kept simple here */}
+            {isMigratedToCloud && (
+              <div className="relative">
+                <button
+                  onClick={() => setIsOpen(!isOpen)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
+                    failedCount > 0 
+                      ? 'border-red-500/20 bg-red-500/5 text-red-500 hover:bg-red-500/10'
+                      : pendingCount > 0
+                        ? 'border-amber-500/20 bg-amber-500/5 text-amber-500 hover:bg-amber-500/10'
+                        : 'border-emerald-500/20 bg-emerald-500/5 text-emerald-400 hover:bg-emerald-500/10'
+                  }`}
+                >
+                  {failedCount > 0 ? (
+                    <>
+                      <CloudOff size={14} className="text-red-500" />
+                      <span className="font-semibold">{failedCount} échecs</span>
+                    </>
+                  ) : pendingCount > 0 ? (
+                    <>
+                      <Loader2 size={14} className="text-amber-500 animate-spin" />
+                      <span>{pendingCount} en attente</span>
+                    </>
+                  ) : (
+                    <>
+                      <Cloud size={14} className="text-emerald-500" />
+                      <span>Cloud synchronisé</span>
+                    </>
+                  )}
+                </button>
+
+                {isOpen && (
+                  <div className="absolute right-0 mt-2 w-80 bg-card border border-border shadow-xl rounded-xl p-4 z-50 text-xs space-y-3">
+                    <div className="flex justify-between items-center pb-2 border-b border-border">
+                      <span className="font-bold text-foreground uppercase tracking-wider text-[10px]">Statut Écritures Cloud</span>
+                      <button onClick={() => setIsOpen(false)} className="text-muted-foreground hover:text-foreground">Fermer</button>
+                    </div>
+
+                    {syncItems.length === 0 ? (
+                      <p className="text-muted-foreground italic text-[10px] text-center py-2">Aucune modification cloud mesurée lors de cette session.</p>
+                    ) : (
+                      <div className="space-y-2 max-h-60 overflow-y-auto">
+                        {syncItems.map(item => (
+                          <div key={item.id} className="p-2 bg-secondary/20 rounded-lg flex justify-between items-center gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-[9px] uppercase text-foreground">{item.domain}</span>
+                                <span className="text-[8px] text-muted-foreground font-mono">{new Date(item.updatedAt).toLocaleTimeString()}</span>
+                              </div>
+                              <span className="text-[10px] text-muted-foreground block truncate" title={item.id}>{item.id}</span>
+                              {item.error && <span className="text-[9px] text-red-400 block break-words mt-0.5">{item.error}</span>}
+                            </div>
+                            <div className="shrink-0 flex items-center gap-1">
+                              {item.status === 'pending' && (
+                                <Loader2 size={12} className="animate-spin text-amber-500" />
+                              )}
+                              {item.status === 'synced' && (
+                                <span className="text-emerald-500 font-bold text-[10px]">✔</span>
+                              )}
+                              {item.status === 'failed' && (
+                                <button
+                                  onClick={() => retrySync(item.id)}
+                                  className="p-1 hover:bg-red-500/10 text-red-400 hover:text-red-500 rounded border border-red-500/20 cursor-pointer"
+                                  title="Relancer l'écriture"
+                                >
+                                  <RefreshCw size={10} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </header>
 

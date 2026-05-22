@@ -20,6 +20,14 @@ const idbStorage: StateStorage = {
   },
 };
 
+export interface SyncItem {
+  id: string; // generated unique key e.g. "meal_id"
+  domain: 'meals' | 'recipes' | 'favorites' | 'metrics' | 'forms' | 'allergens' | 'profile';
+  status: 'pending' | 'synced' | 'failed';
+  error?: string;
+  updatedAt: string;
+}
+
 export interface AppState {
   metrics: NormalizedMetric[];
   rejectedMetrics: RejectedMetric[];
@@ -39,6 +47,7 @@ export interface AppState {
   allergenBypassLogs: AllergenBypassLog[];
   favoriteFoods: FavoriteFood[];
   isMigratedToCloud?: boolean;
+  syncStatuses: Record<string, SyncItem>;
   addMetric: (metric: NormalizedMetric) => void;
   addMetrics: (metrics: NormalizedMetric[]) => void;
   updateConnection: (source: DataSource, status: ConnectionState['status']) => void;
@@ -62,6 +71,7 @@ export interface AppState {
   computeEngineScores: () => void;
   exportLocalData: () => string;
   clearDomainData: (domain: "metrics" | "meals" | "pains" | "menstrual" | "hooper" | "all") => void;
+  retrySync: (key: string) => Promise<void>;
 }
 
 const initialProfile: UserProfile = {
@@ -89,6 +99,54 @@ const initialConnections: Record<DataSource, ConnectionState> = {
   derived: { source: 'derived', status: 'connected', name: 'Aura Analytics (Calculé)', icon: 'cpu', description: 'Indicateurs de charge ACWR, Readiness, scores fatigues cumulés.' }
 };
 
+export const triggerSyncHelper = async (
+  key: string,
+  domain: SyncItem['domain'],
+  supplier: () => Promise<any>,
+  set: any
+) => {
+  set((state: any) => ({
+    syncStatuses: {
+      ...(state.syncStatuses || {}),
+      [key]: {
+        id: key,
+        domain,
+        status: 'pending',
+        updatedAt: new Date().toISOString()
+      }
+    }
+  }));
+
+  try {
+    await supplier();
+    set((state: any) => ({
+      syncStatuses: {
+        ...(state.syncStatuses || {}),
+        [key]: {
+          id: key,
+          domain,
+          status: 'synced',
+          updatedAt: new Date().toISOString()
+        }
+      }
+    }));
+  } catch (err: any) {
+    console.error(`Sync failed for ${key} in domain ${domain}:`, err);
+    set((state: any) => ({
+      syncStatuses: {
+        ...(state.syncStatuses || {}),
+        [key]: {
+          id: key,
+          domain,
+          status: 'failed',
+          error: err?.message || "Erreur de synchronisation Firestore",
+          updatedAt: new Date().toISOString()
+        }
+      }
+    }));
+  }
+};
+
 export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -110,6 +168,7 @@ export const useStore = create<AppState>()(
       allergenBypassLogs: [],
       favoriteFoods: [],
       isMigratedToCloud: undefined,
+      syncStatuses: {},
       addMetric: (metric) => {
         const result = createValidatedMetric({
           source: metric.source,
@@ -143,7 +202,7 @@ export const useStore = create<AppState>()(
         const validated = result.metric!;
         set((state) => {
           if (state.isMigratedToCloud) {
-            CloudDataRepository.saveMetrics([validated]).catch(() => {});
+            triggerSyncHelper(`metric_${validated.id}`, 'metrics', () => CloudDataRepository.saveMetrics([validated]), set);
           }
           return { metrics: [...state.metrics, validated] };
         });
@@ -182,13 +241,12 @@ export const useStore = create<AppState>()(
           const metricMap = new Map(state.metrics.map(m => [m.id, m]));
           validMetrics.forEach(m => {
             const existing = metricMap.get(m.id);
-            // Update if it doesn't exist, or if the new one has a higher confidence score
             if (!existing || m.confidenceScore >= existing.confidenceScore) {
               metricMap.set(m.id, m);
             }
           });
-          if (state.isMigratedToCloud) {
-            CloudDataRepository.saveMetrics(validMetrics).catch(() => {});
+          if (state.isMigratedToCloud && validMetrics.length > 0) {
+            triggerSyncHelper(`metrics_batch_${Date.now()}`, 'metrics', () => CloudDataRepository.saveMetrics(validMetrics), set);
           }
           return {
             metrics: Array.from(metricMap.values()),
@@ -196,7 +254,6 @@ export const useStore = create<AppState>()(
           };
         });
         
-        // Debounce computation to avoid huge performance hit during mass imports
         if ((window as any).engineDebounce) clearTimeout((window as any).engineDebounce);
         (window as any).engineDebounce = setTimeout(() => {
           get().computeEngineScores();
@@ -216,20 +273,20 @@ export const useStore = create<AppState>()(
         set((state) => {
            const newProfile = { ...state.userProfile, ...profile };
            if (state.isMigratedToCloud) {
-             CloudDataRepository.saveUserProfile(newProfile).catch(() => {});
+             triggerSyncHelper('profile', 'profile', () => CloudDataRepository.saveUserProfile(newProfile), set);
            }
            return { userProfile: newProfile };
         });
       },
       addMenstrualLog: (log) => set((state) => {
         if (state.isMigratedToCloud) {
-          CloudDataRepository.saveMenstrualLog(log).catch(() => {});
+          triggerSyncHelper(`menstrual_${log.id || log.date}`, 'forms', () => CloudDataRepository.saveMenstrualLog(log), set);
         }
         return { menstrualLogs: [...state.menstrualLogs, log] };
       }),
       addGarminImportLog: (log) => set((state) => {
         if (state.isMigratedToCloud) {
-          CloudDataRepository.saveGarminImportLog(log).catch(() => {});
+          triggerSyncHelper(`importLog_${log.id}`, 'metrics', () => CloudDataRepository.saveGarminImportLog(log), set);
         }
         return { garminImportLogs: [log, ...state.garminImportLogs] };
       }),
@@ -237,7 +294,7 @@ export const useStore = create<AppState>()(
         const updatedLogs = state.garminImportLogs.map(log => log.id === id ? { ...log, ...updates } : log);
         const targetLog = updatedLogs.find(l => l.id === id);
         if (state.isMigratedToCloud && targetLog) {
-          CloudDataRepository.saveGarminImportLog(targetLog).catch(() => {});
+          triggerSyncHelper(`importLog_${id}`, 'metrics', () => CloudDataRepository.saveGarminImportLog(targetLog), set);
         }
         return { garminImportLogs: updatedLogs };
       }),
@@ -245,17 +302,15 @@ export const useStore = create<AppState>()(
         set((state) => {
           const activityMap = new Map(state.garminActivities.map(a => [a.id, a]));
           activities.forEach(a => {
-            activityMap.set(a.id, a); // Upsert activity
+            activityMap.set(a.id, a);
           });
-          if (state.isMigratedToCloud) {
-            CloudDataRepository.saveActivities(activities).catch(() => {});
+          if (state.isMigratedToCloud && activities.length > 0) {
+            triggerSyncHelper(`activities_batch_${Date.now()}`, 'metrics', () => CloudDataRepository.saveActivities(activities), set);
           }
-          // Sort by date descending
           const sortedActivities = Array.from(activityMap.values()).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
           return { garminActivities: sortedActivities };
         });
         
-        // Debounce computation to avoid huge performance hit during mass imports
         if ((window as any).engineDebounce) clearTimeout((window as any).engineDebounce);
         (window as any).engineDebounce = setTimeout(() => {
           get().computeEngineScores();
@@ -264,7 +319,7 @@ export const useStore = create<AppState>()(
       addHooperLog: (log) => {
         set((state) => {
           if (state.isMigratedToCloud) {
-            CloudDataRepository.saveHooperLog(log).catch(() => {});
+            triggerSyncHelper(`hooper_${log.id || log.date}`, 'forms', () => CloudDataRepository.saveHooperLog(log), set);
           }
           const filtered = state.hooperLogs.filter(l => l.date !== log.date);
           return { hooperLogs: [...filtered, log].sort((a, b) => a.date.localeCompare(b.date)) };
@@ -274,7 +329,7 @@ export const useStore = create<AppState>()(
       addSessionRPE: (log) => {
         set((state) => {
           if (state.isMigratedToCloud) {
-            CloudDataRepository.saveSessionRpe(log).catch(() => {});
+            triggerSyncHelper(`rpe_${log.id || log.activityId}`, 'forms', () => CloudDataRepository.saveSessionRpe(log), set);
           }
           const filtered = state.sessionRpeLogs.filter(l => l.activityId !== log.activityId);
           return { sessionRpeLogs: [...filtered, log] };
@@ -284,7 +339,7 @@ export const useStore = create<AppState>()(
       addWeeklyScreeningLog: (log) => {
         set((state) => {
           if (state.isMigratedToCloud) {
-            CloudDataRepository.saveWeeklyScreeningLog(log).catch(() => {});
+            triggerSyncHelper(`screening_${log.id || log.date}`, 'forms', () => CloudDataRepository.saveWeeklyScreeningLog(log), set);
           }
           const filtered = state.weeklyScreeningLogs.filter(l => l.date !== log.date);
           return { weeklyScreeningLogs: [...filtered, log].sort((a, b) => a.date.localeCompare(b.date)) };
@@ -294,7 +349,7 @@ export const useStore = create<AppState>()(
       addMealLog: (log) => {
         set((state) => {
           if (state.isMigratedToCloud) {
-            CloudDataRepository.saveMealLog(log).catch(() => {});
+            triggerSyncHelper(`meal_${log.id}`, 'meals', () => CloudDataRepository.saveMealLog(log), set);
           }
           const filtered = state.mealLogs.filter(l => l.id !== log.id);
           return { mealLogs: [...filtered, log] };
@@ -315,7 +370,7 @@ export const useStore = create<AppState>()(
       addPainLog: (log) => {
         set((state) => {
           if (state.isMigratedToCloud) {
-            CloudDataRepository.savePainLog(log).catch(() => {});
+            triggerSyncHelper(`pain_${log.id}`, 'forms', () => CloudDataRepository.savePainLog(log), set);
           }
           const filtered = state.painLogs.filter(l => l.id !== log.id);
           return { painLogs: [...filtered, log] };
@@ -325,7 +380,7 @@ export const useStore = create<AppState>()(
       addContextLog: (log) => {
         set((state) => {
           if (state.isMigratedToCloud) {
-            CloudDataRepository.saveContextLog(log).catch(() => {});
+            triggerSyncHelper(`context_${log.id}`, 'forms', () => CloudDataRepository.saveContextLog(log), set);
           }
           const filtered = state.contextLogs.filter(l => l.id !== log.id);
           return { contextLogs: [...filtered, log] };
@@ -335,7 +390,7 @@ export const useStore = create<AppState>()(
       addAllergenBypassLog: (log) => {
         set((state) => {
           if (state.isMigratedToCloud) {
-            CloudDataRepository.saveAllergenBypassLog(log).catch(() => {});
+            triggerSyncHelper(`allergenBypass_${log.id}`, 'allergens', () => CloudDataRepository.saveAllergenBypassLog(log), set);
           }
           return { allergenBypassLogs: [...(state.allergenBypassLogs || []), log] };
         });
@@ -343,7 +398,7 @@ export const useStore = create<AppState>()(
       addRecipe: (recipe) => {
         set((state) => {
           if (state.isMigratedToCloud) {
-            CloudDataRepository.saveRecipe(recipe).catch(() => {});
+            triggerSyncHelper(`recipe_${recipe.id}`, 'recipes', () => CloudDataRepository.saveRecipe(recipe), set);
           }
           const filtered = (state.recipes || []).filter(r => r.id !== recipe.id);
           return { recipes: [...filtered, recipe] };
@@ -362,7 +417,7 @@ export const useStore = create<AppState>()(
       addFavoriteFood: (fav) => {
         set((state) => {
           if (state.isMigratedToCloud) {
-            CloudDataRepository.saveFavoriteFood(fav).catch(() => {});
+            triggerSyncHelper(`favorite_${fav.id}`, 'favorites', () => CloudDataRepository.saveFavoriteFood(fav), set);
           }
           const filtered = (state.favoriteFoods || []).filter(f => f.id !== fav.id);
           return {
@@ -433,11 +488,70 @@ export const useStore = create<AppState>()(
           return updates;
         });
         get().computeEngineScores();
+      },
+      retrySync: async (key) => {
+        const state = get();
+        const item = state.syncStatuses[key];
+        if (!item) return;
+
+        let supplier: (() => Promise<any>) | null = null;
+        if (key === 'profile') {
+          supplier = () => CloudDataRepository.saveUserProfile(state.userProfile);
+        } else if (key.startsWith('meal_')) {
+          const id = key.substring(5);
+          const val = state.mealLogs.find(m => m.id === id);
+          if (val) supplier = () => CloudDataRepository.saveMealLog(val);
+        } else if (key.startsWith('recipe_')) {
+          const id = key.substring(7);
+          const val = state.recipes.find(r => r.id === id);
+          if (val) supplier = () => CloudDataRepository.saveRecipe(val);
+        } else if (key.startsWith('favorite_')) {
+          const id = key.substring(9);
+          const val = state.favoriteFoods.find(f => f.id === id);
+          if (val) supplier = () => CloudDataRepository.saveFavoriteFood(val);
+        } else if (key.startsWith('metric_')) {
+          const id = key.substring(7);
+          const val = state.metrics.find(m => m.id === id);
+          if (val) supplier = () => CloudDataRepository.saveMetrics([val]);
+        } else if (key.startsWith('hooper_')) {
+          const id = key.substring(7);
+          const val = state.hooperLogs.find(h => h.id === id);
+          if (val) supplier = () => CloudDataRepository.saveHooperLog(val);
+        } else if (key.startsWith('rpe_')) {
+          const id = key.substring(4);
+          const val = state.sessionRpeLogs.find(r => r.id === id);
+          if (val) supplier = () => CloudDataRepository.saveSessionRpe(val);
+        } else if (key.startsWith('pain_')) {
+          const id = key.substring(5);
+          const val = state.painLogs.find(p => p.id === id);
+          if (val) supplier = () => CloudDataRepository.savePainLog(val);
+        } else if (key.startsWith('context_')) {
+          const id = key.substring(8);
+          const val = state.contextLogs.find(c => c.id === id);
+          if (val) supplier = () => CloudDataRepository.saveContextLog(val);
+        } else if (key.startsWith('screening_')) {
+          const id = key.substring(10);
+          const val = state.weeklyScreeningLogs.find(s => s.id === id);
+          if (val) supplier = () => CloudDataRepository.saveWeeklyScreeningLog(val);
+        } else if (key.startsWith('allergenBypass_')) {
+          const id = key.substring(15);
+          const val = state.allergenBypassLogs.find(a => a.id === id);
+          if (val) supplier = () => CloudDataRepository.saveAllergenBypassLog(val);
+        }
+
+        if (supplier) {
+          await triggerSyncHelper(key, item.domain, supplier, set);
+        }
       }
     }),
     {
       name: 'aura-elite-storage',
       storage: createJSONStorage(() => idbStorage),
+      partialize: (state) => {
+        // Exclude syncStatuses fromIndexedDB persistence to ensure fresh hydration
+        const { syncStatuses, ...rest } = state;
+        return rest;
+      }
     }
   )
 );

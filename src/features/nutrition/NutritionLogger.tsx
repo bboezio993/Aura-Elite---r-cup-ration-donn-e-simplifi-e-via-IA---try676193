@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../../store/useStore';
+import { auth } from '../../firebase';
 import { internalFoodDatabase, servingUnits, convertPortionToGrams, internalRecipes } from '../../domain/nutrition/foodDatabase';
 import { resolveRecipeToMealItem } from '../../domain/nutrition/recipeEngine';
 import { foodNutrientDatabase } from '../../domain/nutrition/foodNutrientValues';
@@ -60,17 +61,33 @@ export function NutritionLogger() {
   const userProfile = useStore(state => state.userProfile);
   const updateUserProfile = useStore(state => state.updateUserProfile);
 
-  const favoriteFoodIds = userProfile?.favoriteFoodIds || [];
+  const favoriteFoods = useStore(state => state.favoriteFoods) || [];
+  const addFavoriteFood = useStore(state => state.addFavoriteFood);
+  const deleteFavoriteFood = useStore(state => state.deleteFavoriteFood);
+
+  const favoriteFoodIds = favoriteFoods.map(f => f.foodProductId);
   const favoriteRecipeIds = userProfile?.favoriteRecipeIds || [];
 
   const toggleFavoriteFood = (foodId: string) => {
-    let updated: string[];
     if (favoriteFoodIds.includes(foodId)) {
-      updated = favoriteFoodIds.filter(id => id !== foodId);
+      const existing = favoriteFoods.find(f => f.foodProductId === foodId);
+      if (existing) {
+        deleteFavoriteFood(existing.id);
+      }
     } else {
-      updated = [...favoriteFoodIds, foodId];
+      const found = internalFoodDatabase.find(f => f.id === foodId);
+      const name = found ? found.name : foodId;
+      addFavoriteFood({
+        id: `${foodId}_fav`,
+        uid: auth.currentUser?.uid || "Athlète Elite",
+        foodProductId: foodId,
+        displayName: name,
+        brand: "",
+        defaultPortion: 100,
+        defaultMealType: "Déjeuner",
+        createdAt: new Date().toISOString()
+      });
     }
-    updateUserProfile({ favoriteFoodIds: updated });
   };
 
   const toggleFavoriteRecipe = (recipeId: string) => {

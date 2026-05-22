@@ -178,7 +178,7 @@ export function BarcodeScanner({ onAddMealItem }: { onAddMealItem: (item: any) =
         setEditedFat(prod.nutrimentsPer100g.fat?.value ?? 0);
 
         // Check if favorite in store
-        const isFav = store.userProfile?.favoriteFoodIds?.includes(prod.id) || false;
+        const isFav = store.favoriteFoods?.some(f => f.foodProductId === prod.id) || false;
         setIsFavorite(isFav);
         const existingFav = store.favoriteFoods?.find(f => f.foodProductId === prod.id);
         if (existingFav) {
@@ -217,15 +217,6 @@ export function BarcodeScanner({ onAddMealItem }: { onAddMealItem: (item: any) =
       }
       setShowFavConfig(false);
     }
-
-    const fIds = store.userProfile?.favoriteFoodIds || [];
-    let updated: string[];
-    if (fIds.includes(product.id)) {
-      updated = fIds.filter(id => id !== product.id);
-    } else {
-      updated = [...fIds, product.id];
-    }
-    store.updateUserProfile({ favoriteFoodIds: updated });
   };
 
   // Calculate current item values

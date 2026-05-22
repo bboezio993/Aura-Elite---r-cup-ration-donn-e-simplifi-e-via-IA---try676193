@@ -6,8 +6,15 @@ import { foodNutrientDatabase } from '../../domain/nutrition/foodNutrientValues'
 import { CoreNutrients } from '../../domain/nutrition/nutrientDefinitions';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, Check, Search, ChevronRight, Apple, Flame, Award, AlertTriangle, Clipboard, BookOpen, Heart } from 'lucide-react';
+import { Plus, Trash2, Check, Search, ChevronRight, Apple, Flame, Award, AlertTriangle, Clipboard, BookOpen, Heart, Sparkles as SparklesIcon, Scan, FileText, Camera, Utensils, Mic } from 'lucide-react';
 import { MealItem, MealLog, Recipe } from '../../types';
+
+// Intelligent Saisie components
+import { BarcodeScanner } from '../../components/BarcodeScanner';
+import { RecipeTextImport } from '../../components/RecipeTextImport';
+import { LabelOCRCapture } from '../../components/LabelOCRCapture';
+import { MealPhotoCapture } from '../../components/MealPhotoCapture';
+import { VoiceCapture } from '../../components/VoiceCapture';
 
 const frequentMealPresets = [
   {
@@ -84,7 +91,8 @@ export function NutritionLogger() {
   const [mealItemRawCooked, setMealItemRawCooked] = useState<"raw" | "cooked">("raw");
   
   // Interactive Tab Selection
-  const [activeTab, setActiveTab] = useState<'ingredients' | 'recipes' | 'favorites'>('ingredients');
+  const [activeTab, setActiveTab] = useState<'ingredients' | 'recipes' | 'favorites' | 'smart'>('ingredients');
+  const [smartCaptureType, setSmartCaptureType] = useState<'barcode' | 'photo' | 'ocr' | 'recipe' | 'voice'>('barcode');
 
   // Custom Recipe Creator states
   const [showRecipeCreator, setShowRecipeCreator] = useState(false);
@@ -402,7 +410,19 @@ export function NutritionLogger() {
             >
               <span className="flex items-center justify-center gap-1.5">
                 <Heart size={14} className="text-red-500 fill-red-500" />
-                Saisie Rapide & Favoris
+                Formules & Favoris
+              </span>
+            </button>
+            <button
+              onClick={() => { setActiveTab('smart'); setSelectedFoodId(''); }}
+              type="button"
+              className={`flex-1 pb-2 text-xs font-bold text-center border-b-2 transition-all ${
+                activeTab === 'smart' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <span className="flex items-center justify-center gap-1.5">
+                <SparklesIcon size={14} className="text-amber-500 animate-pulse" />
+                Saisie IA 🌟
               </span>
             </button>
           </div>
@@ -794,6 +814,131 @@ export function NutritionLogger() {
                         );
                       })}
                   </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'smart' && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-1.5 p-1 bg-secondary/35 rounded-xl border border-border">
+                <button
+                  onClick={() => setSmartCaptureType('barcode')}
+                  className={`flex-1 py-1.5 px-2 text-[10px] font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                    smartCaptureType === 'barcode' 
+                      ? 'bg-background text-foreground shadow-sm border border-border' 
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Scan size={12} className="text-primary" />
+                  Code-barres
+                </button>
+                <button
+                  onClick={() => setSmartCaptureType('photo')}
+                  className={`flex-1 py-1.5 px-2 text-[10px] font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                    smartCaptureType === 'photo' 
+                      ? 'bg-background text-foreground shadow-sm border border-border' 
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Camera size={12} className="text-emerald-500" />
+                  Photo d'assiette
+                </button>
+                <button
+                  onClick={() => setSmartCaptureType('ocr')}
+                  className={`flex-1 py-1.5 px-2 text-[10px] font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                    smartCaptureType === 'ocr' 
+                      ? 'bg-background text-foreground shadow-sm border border-border' 
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <FileText size={12} className="text-amber-500" />
+                  Étiquette OCR
+                </button>
+                <button
+                  onClick={() => setSmartCaptureType('recipe')}
+                  className={`flex-1 py-1.5 px-2 text-[10px] font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                    smartCaptureType === 'recipe' 
+                      ? 'bg-background text-foreground shadow-sm border border-border' 
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Utensils size={12} className="text-indigo-400" />
+                  Recette Texte
+                </button>
+                <button
+                  onClick={() => setSmartCaptureType('voice')}
+                  className={`flex-1 py-1.5 px-2 text-[10px] font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                    smartCaptureType === 'voice' 
+                      ? 'bg-background text-foreground shadow-sm border border-border' 
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Mic size={12} className="text-pink-500" />
+                  Dictée Vocale
+                </button>
+              </div>
+
+              <div className="border border-border/80 bg-background/50 rounded-2xl p-5 shadow-sm">
+                <div className="mb-4">
+                  <span className="text-[10px] font-bold text-muted-foreground block uppercase">Catégorie active</span>
+                  <div className="text-xs font-semibold">Repas à enregistrer :
+                    <select
+                      value={mealType}
+                      onChange={(e) => setMealType(e.target.value as any)}
+                      className="ml-2 text-xs font-bold rounded-lg border border-border bg-secondary/30 p-1 px-2 focus:ring-1 focus:ring-primary focus:outline-none"
+                    >
+                      <option value="breakfast">Petit-Déjeuner 🍳</option>
+                      <option value="lunch">Déjeuner 🥗</option>
+                      <option value="dinner">Dîner 🍲</option>
+                      <option value="snack">Collation 🍎</option>
+                      <option value="pre_workout">Pré-Workout ⚡</option>
+                      <option value="intra_workout">Intra-Workout 💧</option>
+                      <option value="post_workout">Post-Workout 🥛</option>
+                    </select>
+                  </div>
+                </div>
+
+                {smartCaptureType === 'barcode' && (
+                  <BarcodeScanner onAddMealItem={(item) => setItems(prev => [...prev, item])} />
+                )}
+
+                {smartCaptureType === 'photo' && (
+                  <MealPhotoCapture onAddMealItem={(item) => setItems(prev => [...prev, item])} />
+                )}
+
+                {smartCaptureType === 'ocr' && (
+                  <LabelOCRCapture onAddMealItem={(item) => setItems(prev => [...prev, item])} />
+                )}
+
+                {smartCaptureType === 'recipe' && (
+                  <RecipeTextImport onAddMealItem={(item) => setItems(prev => [...prev, item])} />
+                )}
+
+                {smartCaptureType === 'voice' && (
+                  <VoiceCapture 
+                    formType="nutrition" 
+                    onParsedResult={(extracted) => {
+                      if (extracted.items && Array.isArray(extracted.items)) {
+                        extracted.items.forEach((item: any) => {
+                          const qty = item.quantity || 100;
+                          setItems(prev => [...prev, {
+                            foodId: `vocal_ing_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                            foodName: item.foodName,
+                            quantity: qty,
+                            unit: item.unit || "g",
+                            gramsSelected: qty,
+                            conversionConfidence: item.confidence || 85,
+                            conversionAssumptions: item.assumptions || "Dictée vocale transcrite",
+                            calories: Math.round(qty * 1.5),
+                            protein: Number((qty * 0.08).toFixed(1)),
+                            carbs: Number((qty * 0.18).toFixed(1)),
+                            fat: Number((qty * 0.04).toFixed(1))
+                          }]);
+                        });
+                      }
+                    }} 
+                  />
                 )}
               </div>
             </div>

@@ -1,7 +1,9 @@
 {
   "name": "Remix: Aura Elite",
   "description": "Système expert de suivi de santé et de performance sportive de haut niveau, agrégeant données biométriques et subjectives pour des recommandations personnalisées.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": [
+    "camera"
+  ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]

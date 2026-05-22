@@ -12,8 +12,12 @@ import {
   CheckCircle,
   Clock,
   Heart,
-  Sparkles
+  Sparkles,
+  Mic,
+  MicOff,
+  Volume2
 } from 'lucide-react';
+import { VoiceCapture } from '../../components/VoiceCapture';
 
 interface FormProps {
   onSuccess?: () => void;
@@ -85,6 +89,7 @@ function DailyCheckInForm({ onSuccess }: FormProps) {
   const addHooperLog = useStore(state => state.addHooperLog);
   const addMetric = useStore(state => state.addMetric);
   const [success, setSuccess] = useState(false);
+  const [showVoiceAssistant, setShowVoiceAssistant] = useState(false);
 
   // Default values
   const [fatigue, setFatigue] = useState(4);
@@ -99,6 +104,21 @@ function DailyCheckInForm({ onSuccess }: FormProps) {
   const [recovery, setRecovery] = useState(5);
   const [isIll, setIsIll] = useState(false);
   const [notes, setNotes] = useState('');
+
+  const handleVoiceParsed = (parsed: any) => {
+    if (parsed.fatigue !== undefined) setFatigue(Number(parsed.fatigue));
+    if (parsed.stress !== undefined) setStress(Number(parsed.stress));
+    if (parsed.sleepQuality !== undefined) setSleep(Number(parsed.sleepQuality));
+    if (parsed.soreness !== undefined) setSoreness(Number(parsed.soreness));
+    if (parsed.mood !== undefined) setMood(Number(parsed.mood));
+    if (parsed.motivation !== undefined) setMotivation(Number(parsed.motivation));
+    if (parsed.painLevel !== undefined) setPainLevel(Number(parsed.painLevel));
+    if (parsed.digestion !== undefined) setDigestion(Number(parsed.digestion));
+    if (parsed.appetite !== undefined) setAppetite(Number(parsed.appetite));
+    if (parsed.recovery !== undefined) setRecovery(Number(parsed.recovery));
+    if (parsed.isIll !== undefined) setIsIll(Boolean(parsed.isIll));
+    if (parsed.notes) setNotes(parsed.notes);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -171,8 +191,41 @@ function DailyCheckInForm({ onSuccess }: FormProps) {
           <h3 className="text-lg font-bold">Check-in du jour — Hooper Index Étendu</h3>
           <p className="text-xs text-muted-foreground">Enregistrez vos indicateurs subjectifs complémentaires du matin.</p>
         </div>
-        <Sparkles className="text-primary w-5 h-5 animate-pulse" />
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setShowVoiceAssistant(!showVoiceAssistant)}
+            className="text-xs font-bold gap-1.5 border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 text-amber-500 h-8"
+          >
+            <Mic size={13} className="animate-pulse text-amber-500" />
+            Remplir par voix 🎙️
+          </Button>
+          <Sparkles className="text-primary w-5 h-5 animate-pulse" />
+        </div>
       </div>
+
+      {showVoiceAssistant && (
+        <div className="p-4 bg-amber-500/[0.03] border border-amber-500/15 rounded-2xl space-y-2 animate-fade-in text-xs">
+          <div className="flex justify-between items-center">
+            <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest flex items-center gap-1">
+              <Sparkles size={11} className="animate-spin" />
+              Remplissage Vocal Automatique Aura
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowVoiceAssistant(false)}
+              className="text-[10px] text-muted-foreground hover:text-foreground underline font-bold"
+            >
+              Fermer ❌
+            </button>
+          </div>
+          <p className="text-[10px] text-muted-foreground leading-normal">
+            Parlez naturellement pour dicter votre forme ("fatigué à 5 sur 7, stress modéré, j'ai bien dormi à 6, pas de douleurs majeures"). Les sliders se pré-rempliront automatiquement après l'interprétation de l'assistant.
+          </p>
+          <VoiceCapture formType="daily" onParsedResult={handleVoiceParsed} />
+        </div>
+      )}
 
       {success ? (
         <div className="flex flex-col items-center justify-center py-8 text-center space-y-3">
@@ -335,6 +388,7 @@ function PostSessionRPEForm({ onSuccess }: FormProps) {
   const activities = useStore(state => state.garminActivities);
   const addSessionRPE = useStore(state => state.addSessionRPE);
   const [success, setSuccess] = useState(false);
+  const [showVoiceAssistant, setShowVoiceAssistant] = useState(false);
 
   const [actId, setActId] = useState('');
   const [rpe, setRpe] = useState(5);
@@ -348,6 +402,18 @@ function PostSessionRPEForm({ onSuccess }: FormProps) {
   const [comment, setComment] = useState('');
 
   const linkedAct = activities.find(a => a.id === actId);
+
+  const handleVoiceParsed = (parsed: any) => {
+    if (parsed.rpe !== undefined) setRpe(Number(parsed.rpe));
+    if (parsed.muscularLoad !== undefined) setMuscLoad(Number(parsed.muscularLoad));
+    if (parsed.cardioLoad !== undefined) setCardioLoad(Number(parsed.cardioLoad));
+    if (parsed.painDuring !== undefined) setPainDuring(Boolean(parsed.painDuring));
+    if (parsed.painLocation !== undefined) setPainLocation(parsed.painLocation);
+    if (parsed.postPainIntensity !== undefined) setPostPain(Number(parsed.postPainIntensity));
+    if (parsed.techniqueSensation !== undefined) setTechnique(Number(parsed.techniqueSensation));
+    if (parsed.conformanceToPlan !== undefined) setComform(Boolean(parsed.conformanceToPlan));
+    if (parsed.comment !== undefined) setComment(parsed.comment);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -384,10 +450,43 @@ function PostSessionRPEForm({ onSuccess }: FormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="border-b pb-3 border-border">
-        <h3 className="text-lg font-bold">Ressenti Post-Séance (Session RPE)</h3>
-        <p className="text-xs text-muted-foreground">Qualifiez l'intensité perçue de votre dernière activité issue de votre montre.</p>
+      <div className="flex items-center justify-between border-b pb-3 border-border">
+        <div>
+          <h3 className="text-lg font-bold">Ressenti Post-Séance (Session RPE)</h3>
+          <p className="text-xs text-muted-foreground">Qualifiez l'intensité perçue de votre dernière activité issue de votre montre.</p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setShowVoiceAssistant(!showVoiceAssistant)}
+          className="text-xs font-bold gap-1.5 border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 text-amber-500 h-8 shrink-0"
+        >
+          <Mic size={13} className="animate-pulse text-amber-500" />
+          Remplir par voix 🎙️
+        </Button>
       </div>
+
+      {showVoiceAssistant && (
+        <div className="p-4 bg-amber-500/[0.03] border border-amber-500/15 rounded-2xl space-y-2 animate-fade-in text-xs">
+          <div className="flex justify-between items-center">
+            <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest flex items-center gap-1">
+              <Sparkles size={11} className="animate-spin" />
+              Saisie Vocale Assistée Physio RPE
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowVoiceAssistant(false)}
+              className="text-[10px] text-muted-foreground hover:text-foreground underline font-bold"
+            >
+              Fermer ❌
+            </button>
+          </div>
+          <p className="text-[10px] text-muted-foreground leading-normal">
+            Parlez naturellement pour raconter votre entraînement physique (ex: "Séance très intense Cardio à 8, musculairement à 6, très bonne technique, j'ai respecté le plan de l'entraîneur à la lettre mais j'ai un peu mal au tendon d'Achille"). Les entrées du formulaire seront extraites et complétées en temps réel.
+          </p>
+          <VoiceCapture formType="rpe" onParsedResult={handleVoiceParsed} />
+        </div>
+      )}
 
       {success ? (
         <div className="flex flex-col items-center justify-center py-6 text-emerald-500 font-semibold space-y-2">

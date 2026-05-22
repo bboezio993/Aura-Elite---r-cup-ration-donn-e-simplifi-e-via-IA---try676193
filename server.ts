@@ -92,7 +92,7 @@ async function startServer() {
       // Preserve missing values and missingReason as per P4.6
       const mapNutrient = (name: string, val: any, unit: string) => {
         if (val === undefined || val === null) {
-          return { value: 0, unit, isMissing: true, missingReason: "Donnée non documentée sur l'étiquette Open Food Facts" };
+          return { value: null, unit, isMissing: true, missingReason: "not_documented" };
         }
         return { value: Number(val), unit, isMissing: false };
       };

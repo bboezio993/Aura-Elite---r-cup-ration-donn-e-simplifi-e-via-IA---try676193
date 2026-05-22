@@ -111,7 +111,7 @@ export function RecipeTextImport({ onAddMealItem }: { onAddMealItem: (item: any)
     const newRecipe = {
       id: `recipe_${Date.now()}`,
       name: draft.name || "Recette Importée IA",
-      ingredients: editedIngredients.map(ing => ({
+      items: editedIngredients.map(ing => ({
         foodName: ing.foodName,
         quantity: ing.quantity,
         unit: ing.unit,

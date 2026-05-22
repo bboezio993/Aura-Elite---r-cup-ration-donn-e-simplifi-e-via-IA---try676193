@@ -264,5 +264,12 @@ service cloud.firestore {
       allow update: if isDocOwner() && isValidAiUsageLog(request.resource.data) && uidNotModified();
       allow delete: if isDocOwner();
     }
+
+    match /foodProducts/{productId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+      allow update: if isAuthenticated() && resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid;
+      allow delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
+    }
   }
 }

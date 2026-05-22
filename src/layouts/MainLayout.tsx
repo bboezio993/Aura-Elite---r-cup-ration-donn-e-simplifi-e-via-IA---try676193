@@ -16,10 +16,14 @@ import {
 } from 'lucide-react';
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { CloudMigrationAssistant } from '../components/CloudMigrationAssistant';
 
 export function MainLayout() {
   return (
     <div className="min-h-screen bg-background text-foreground flex">
+      {/* Cloud Migration Assistant */}
+      <CloudMigrationAssistant />
+
       {/* Sidebar */}
       <aside className="w-64 border-r border-border hidden md:flex flex-col p-6 gap-8">
         <div className="flex items-center gap-2">

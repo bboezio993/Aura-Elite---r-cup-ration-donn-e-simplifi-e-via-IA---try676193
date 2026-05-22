@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store/useStore';
+import { syncFoodProductToFirestore } from '../services/firebaseSync';
 import { 
   Scan, 
   Search, 
@@ -136,13 +137,16 @@ export function BarcodeScanner({ onAddMealItem }: { onAddMealItem: (item: any) =
         const prod = data.product;
         setProduct(prod);
         
+        // Sync scanned master product to reusable foodProducts Firestore collection
+        syncFoodProductToFirestore(prod);
+        
         // Initialize corrections states
         setEditedName(prod.productName);
         setEditedBrand(prod.brand);
-        setEditedCalories(prod.nutrimentsPer100g.calories.value);
-        setEditedProtein(prod.nutrimentsPer100g.protein.value);
-        setEditedCarbs(prod.nutrimentsPer100g.carbs.value);
-        setEditedFat(prod.nutrimentsPer100g.fat.value);
+        setEditedCalories(prod.nutrimentsPer100g.calories?.value ?? 0);
+        setEditedProtein(prod.nutrimentsPer100g.protein?.value ?? 0);
+        setEditedCarbs(prod.nutrimentsPer100g.carbs?.value ?? 0);
+        setEditedFat(prod.nutrimentsPer100g.fat?.value ?? 0);
 
         // Check if favorite in store
         const isFav = store.userProfile?.favoriteFoodIds?.includes(prod.id) || false;
@@ -176,13 +180,45 @@ export function BarcodeScanner({ onAddMealItem }: { onAddMealItem: (item: any) =
 
   // Calculate current item values
   const gramsSelected = unit === 'g' ? quantity : quantity * 50; // default piece is 50g approx
-  const finalCals = Math.round(((isEditing ? editedCalories : product?.nutrimentsPer100g.calories.value || 0) * gramsSelected) / 100);
-  const finalProtein = Number((((isEditing ? editedProtein : product?.nutrimentsPer100g.protein.value || 0) * gramsSelected) / 100).toFixed(1));
-  const finalCarbs = Number((((isEditing ? editedCarbs : product?.nutrimentsPer100g.carbs.value || 0) * gramsSelected) / 100).toFixed(1));
-  const finalFat = Number((((isEditing ? editedFat : product?.nutrimentsPer100g.fat.value || 0) * gramsSelected) / 100).toFixed(1));
+  
+  const rawCalVal = isEditing ? editedCalories : product?.nutrimentsPer100g.calories?.value;
+  const finalCals = (rawCalVal !== undefined && rawCalVal !== null) 
+    ? Math.round((Number(rawCalVal) * gramsSelected) / 100) 
+    : null;
+
+  const rawProteinVal = isEditing ? editedProtein : product?.nutrimentsPer100g.protein?.value;
+  const finalProtein = (rawProteinVal !== undefined && rawProteinVal !== null) 
+    ? Number(((Number(rawProteinVal) * gramsSelected) / 100).toFixed(1)) 
+    : null;
+
+  const rawCarbsVal = isEditing ? editedCarbs : product?.nutrimentsPer100g.carbs?.value;
+  const finalCarbs = (rawCarbsVal !== undefined && rawCarbsVal !== null) 
+    ? Number(((Number(rawCarbsVal) * gramsSelected) / 100).toFixed(1)) 
+    : null;
+
+  const rawFatVal = isEditing ? editedFat : product?.nutrimentsPer100g.fat?.value;
+  const finalFat = (rawFatVal !== undefined && rawFatVal !== null) 
+    ? Number(((Number(rawFatVal) * gramsSelected) / 100).toFixed(1)) 
+    : null;
 
   const handleAddProduct = () => {
     if (!product) return;
+
+    if (isEditing) {
+      const correctedProduct = {
+        ...product,
+        productName: editedName,
+        brand: editedBrand,
+        nutrimentsPer100g: {
+          ...product.nutrimentsPer100g,
+          calories: { ...product.nutrimentsPer100g.calories, value: editedCalories, isMissing: false },
+          protein: { ...product.nutrimentsPer100g.protein, value: editedProtein, isMissing: false },
+          carbs: { ...product.nutrimentsPer100g.carbs, value: editedCarbs, isMissing: false },
+          fat: { ...product.nutrimentsPer100g.fat, value: editedFat, isMissing: false },
+        }
+      };
+      syncFoodProductToFirestore(correctedProduct);
+    }
 
     onAddMealItem({
       foodId: product.id,
@@ -364,20 +400,36 @@ export function BarcodeScanner({ onAddMealItem }: { onAddMealItem: (item: any) =
           ) : (
             <div className="p-3 bg-secondary/20 rounded-xl border border-secondary border-t-2 border-t-emerald-500 flex justify-between items-center text-center">
               <div>
-                <span className="text-[8px] block uppercase text-muted-foreground">Calories (100g)</span>
-                <span className="font-mono font-bold text-xs text-emerald-500">{product.nutrimentsPer100g.calories.value} kcal</span>
+                <span className="text-[8px] block uppercase text-muted-foreground font-semibold">Calories (100g)</span>
+                <span className="font-mono font-bold text-xs text-emerald-500">
+                  {product.nutrimentsPer100g.calories?.value !== null && product.nutrimentsPer100g.calories?.value !== undefined
+                    ? `${product.nutrimentsPer100g.calories.value} kcal`
+                    : "Donnée non disponible"}
+                </span>
               </div>
               <div>
-                <span className="text-[8px] block uppercase text-muted-foreground">Protéines</span>
-                <span className="font-mono font-bold text-xs text-indigo-400">{product.nutrimentsPer100g.protein.value}g</span>
+                <span className="text-[8px] block uppercase text-muted-foreground font-semibold">Protéines</span>
+                <span className="font-mono font-bold text-xs text-indigo-400">
+                  {product.nutrimentsPer100g.protein?.value !== null && product.nutrimentsPer100g.protein?.value !== undefined
+                    ? `${product.nutrimentsPer100g.protein.value}g`
+                    : "Donnée non disponible"}
+                </span>
               </div>
               <div>
-                <span className="text-[8px] block uppercase text-muted-foreground">Glucides</span>
-                <span className="font-mono font-bold text-xs text-amber-500">{product.nutrimentsPer100g.carbs.value}g</span>
+                <span className="text-[8px] block uppercase text-muted-foreground font-semibold">Glucides</span>
+                <span className="font-mono font-bold text-xs text-amber-500">
+                  {product.nutrimentsPer100g.carbs?.value !== null && product.nutrimentsPer100g.carbs?.value !== undefined
+                    ? `${product.nutrimentsPer100g.carbs.value}g`
+                    : "Donnée non disponible"}
+                </span>
               </div>
               <div>
-                <span className="text-[8px] block uppercase text-muted-foreground">Lipides</span>
-                <span className="font-mono font-bold text-xs text-rose-400">{product.nutrimentsPer100g.fat.value}g</span>
+                <span className="text-[8px] block uppercase text-muted-foreground font-semibold">Lipides</span>
+                <span className="font-mono font-bold text-xs text-rose-400">
+                  {product.nutrimentsPer100g.fat?.value !== null && product.nutrimentsPer100g.fat?.value !== undefined
+                    ? `${product.nutrimentsPer100g.fat.value}g`
+                    : "Donnée non disponible"}
+                </span>
               </div>
             </div>
           )}
@@ -432,8 +484,14 @@ export function BarcodeScanner({ onAddMealItem }: { onAddMealItem: (item: any) =
           <div className="pt-3 border-t border-border/60 flex items-center justify-between">
             <div className="font-mono leading-tight">
               <span className="text-[9px] uppercase text-muted-foreground block">Apports estimés pour {quantity} {unit} :</span>
-              <span className="font-bold text-xs text-emerald-500">{finalCals} kcal</span>
-              <span className="text-[10px] text-muted-foreground block">Pro: {finalProtein}g • Glu: {finalCarbs}g • Lip: {finalFat}g</span>
+              <span className="font-bold text-xs text-emerald-500">
+                {finalCals !== null ? `${finalCals} kcal` : "Donnée non disponible"}
+              </span>
+              <span className="text-[10px] text-muted-foreground block">
+                Pro : {finalProtein !== null ? `${finalProtein}g` : "Donnée non disponible"} • 
+                Glu : {finalCarbs !== null ? `${finalCarbs}g` : "Donnée non disponible"} • 
+                Lip : {finalFat !== null ? `${finalFat}g` : "Donnée non disponible"}
+              </span>
             </div>
             
             <Button

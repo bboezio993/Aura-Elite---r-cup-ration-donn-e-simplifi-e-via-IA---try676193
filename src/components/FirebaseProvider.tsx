@@ -26,6 +26,7 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [offlineError, setOfflineError] = useState(false);
+  const isMigratedToCloud = useStore(state => state.isMigratedToCloud);
   const { 
     addMetrics, 
     addGarminActivities, 
@@ -50,123 +51,102 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       setLoading(false);
-      
-      if (firebaseUser) {
-        // Sync user profile
-        const profileRef = doc(db, 'profiles', firebaseUser.uid);
-        const unsubProfile = onSnapshot(profileRef, (snap) => {
-          if (snap.exists()) {
-            updateUserProfile(snap.data() as any);
-          } else {
-            // Check if we have local, if not ignore. Write is handled explicitly.
-          }
-        }, (error) => handleFirestoreError(error, OperationType.GET, `profiles/${firebaseUser.uid}`));
-
-        // Sync Metrics (LIMIT 5000 for safety, though index is better)
-        const metricsRef = collection(db, 'metrics');
-        const unsubMetrics = onSnapshot(query(metricsRef, where('uid', '==', firebaseUser.uid), limit(5000)), (snap) => {
-          const loadedMetrics = snap.docs.map(d => d.data() as any);
-          if (loadedMetrics.length > 0) {
-            addMetrics(loadedMetrics);
-          }
-        }, (error) => handleFirestoreError(error, OperationType.LIST, 'metrics'));
-
-        // Sync Activities
-        const activitiesRef = collection(db, 'activities');
-        const unsubActivities = onSnapshot(query(activitiesRef, where('uid', '==', firebaseUser.uid), limit(1000)), (snap) => {
-          const loadedActs = snap.docs.map(d => d.data() as any);
-          if (loadedActs.length > 0) {
-            addGarminActivities(loadedActs);
-          }
-        }, (error) => handleFirestoreError(error, OperationType.LIST, 'activities'));
-
-        // Sync Import Logs
-        const logsRef = collection(db, 'importLogs');
-        const unsubLogs = onSnapshot(query(logsRef, where('uid', '==', firebaseUser.uid), limit(100)), (snap) => {
-          // Keep import logs sinked if mapped in the future
-        }, (error) => handleFirestoreError(error, OperationType.LIST, 'importLogs'));
-
-        // --- Subjective, Nutrition, and Extra Log Synchronization ---
-        const unsubSubjectiveMealLogs = onSnapshot(query(collection(db, 'mealLogs'), where('uid', '==', firebaseUser.uid), limit(1000)), (snap) => {
-          if (snap.size > 0) {
-            useStore.setState({ mealLogs: snap.docs.map(d => d.data() as any) });
-            useStore.getState().computeEngineScores();
-          }
-        }, (error) => handleFirestoreError(error, OperationType.LIST, 'mealLogs'));
-
-        const unsubSubjectiveRecipes = onSnapshot(query(collection(db, 'recipes'), where('uid', '==', firebaseUser.uid), limit(1000)), (snap) => {
-          if (snap.size > 0) {
-            useStore.setState({ recipes: snap.docs.map(d => d.data() as any) });
-          }
-        }, (error) => handleFirestoreError(error, OperationType.LIST, 'recipes'));
-
-        const unsubSubjectiveHooper = onSnapshot(query(collection(db, 'hooperLogs'), where('uid', '==', firebaseUser.uid), limit(1000)), (snap) => {
-          if (snap.size > 0) {
-            useStore.setState({ hooperLogs: snap.docs.map(d => d.data() as any) });
-            useStore.getState().computeEngineScores();
-          }
-        }, (error) => handleFirestoreError(error, OperationType.LIST, 'hooperLogs'));
-
-        const unsubSubjectiveSessionRPE = onSnapshot(query(collection(db, 'sessionRpeLogs'), where('uid', '==', firebaseUser.uid), limit(1000)), (snap) => {
-          if (snap.size > 0) {
-            useStore.setState({ sessionRpeLogs: snap.docs.map(d => d.data() as any) });
-            useStore.getState().computeEngineScores();
-          }
-        }, (error) => handleFirestoreError(error, OperationType.LIST, 'sessionRpeLogs'));
-
-        const unsubSubjectivePain = onSnapshot(query(collection(db, 'painLogs'), where('uid', '==', firebaseUser.uid), limit(1000)), (snap) => {
-          if (snap.size > 0) {
-            useStore.setState({ painLogs: snap.docs.map(d => d.data() as any) });
-            useStore.getState().computeEngineScores();
-          }
-        }, (error) => handleFirestoreError(error, OperationType.LIST, 'painLogs'));
-
-        const unsubSubjectiveMenstrual = onSnapshot(query(collection(db, 'menstrualLogs'), where('uid', '==', firebaseUser.uid), limit(1000)), (snap) => {
-          if (snap.size > 0) {
-            useStore.setState({ menstrualLogs: snap.docs.map(d => d.data() as any) });
-          }
-        }, (error) => handleFirestoreError(error, OperationType.LIST, 'menstrualLogs'));
-
-        const unsubSubjectiveContext = onSnapshot(query(collection(db, 'contextLogs'), where('uid', '==', firebaseUser.uid), limit(1000)), (snap) => {
-          if (snap.size > 0) {
-            useStore.setState({ contextLogs: snap.docs.map(d => d.data() as any) });
-            useStore.getState().computeEngineScores();
-          }
-        }, (error) => handleFirestoreError(error, OperationType.LIST, 'contextLogs'));
-
-        const unsubSubjectiveWeekly = onSnapshot(query(collection(db, 'weeklyScreeningLogs'), where('uid', '==', firebaseUser.uid), limit(1000)), (snap) => {
-          if (snap.size > 0) {
-            useStore.setState({ weeklyScreeningLogs: snap.docs.map(d => d.data() as any) });
-            useStore.getState().computeEngineScores();
-          }
-        }, (error) => handleFirestoreError(error, OperationType.LIST, 'weeklyScreeningLogs'));
-
-        const unsubSubjectiveBypass = onSnapshot(query(collection(db, 'allergenBypassLogs'), where('uid', '==', firebaseUser.uid), limit(1000)), (snap) => {
-          if (snap.size > 0) {
-            useStore.setState({ allergenBypassLogs: snap.docs.map(d => d.data() as any) });
-          }
-        }, (error) => handleFirestoreError(error, OperationType.LIST, 'allergenBypassLogs'));
-
-        return () => {
-          unsubProfile();
-          unsubMetrics();
-          unsubActivities();
-          unsubLogs();
-          unsubSubjectiveMealLogs();
-          unsubSubjectiveRecipes();
-          unsubSubjectiveHooper();
-          unsubSubjectiveSessionRPE();
-          unsubSubjectivePain();
-          unsubSubjectiveMenstrual();
-          unsubSubjectiveContext();
-          unsubSubjectiveWeekly();
-          unsubSubjectiveBypass();
-        };
-      }
     });
 
     return () => unsubscribeAuth();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!user || isMigratedToCloud !== true) return;
+
+    // Sync user profile
+    const profileRef = doc(db, 'profiles', user.uid);
+    const unsubProfile = onSnapshot(profileRef, (snap) => {
+      if (snap.exists()) {
+        updateUserProfile(snap.data() as any);
+      }
+    }, (error) => handleFirestoreError(error, OperationType.GET, `profiles/${user.uid}`));
+
+    // Sync Metrics
+    const metricsRef = collection(db, 'metrics');
+    const unsubMetrics = onSnapshot(query(metricsRef, where('uid', '==', user.uid), limit(5000)), (snap) => {
+      const loadedMetrics = snap.docs.map(d => d.data() as any);
+      useStore.setState({ metrics: loadedMetrics });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'metrics'));
+
+    // Sync Activities
+    const activitiesRef = collection(db, 'activities');
+    const unsubActivities = onSnapshot(query(activitiesRef, where('uid', '==', user.uid), limit(1000)), (snap) => {
+      const loadedActs = snap.docs.map(d => d.data() as any);
+      useStore.setState({ garminActivities: loadedActs });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'activities'));
+
+    // Sync Import Logs
+    const logsRef = collection(db, 'importLogs');
+    const unsubLogs = onSnapshot(query(logsRef, where('uid', '==', user.uid), limit(100)), (snap) => {
+      const loadedImportLogs = snap.docs.map(d => d.data() as any);
+      useStore.setState({ garminImportLogs: loadedImportLogs });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'importLogs'));
+
+    // Sync Meal Logs (No snap.size checks to synchronize empty cloud states)
+    const unsubSubjectiveMealLogs = onSnapshot(query(collection(db, 'mealLogs'), where('uid', '==', user.uid), limit(1000)), (snap) => {
+      useStore.setState({ mealLogs: snap.docs.map(d => d.data() as any) });
+      useStore.getState().computeEngineScores();
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'mealLogs'));
+
+    const unsubSubjectiveRecipes = onSnapshot(query(collection(db, 'recipes'), where('uid', '==', user.uid), limit(1000)), (snap) => {
+      useStore.setState({ recipes: snap.docs.map(d => d.data() as any) });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'recipes'));
+
+    const unsubSubjectiveHooper = onSnapshot(query(collection(db, 'hooperLogs'), where('uid', '==', user.uid), limit(1000)), (snap) => {
+      useStore.setState({ hooperLogs: snap.docs.map(d => d.data() as any) });
+      useStore.getState().computeEngineScores();
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'hooperLogs'));
+
+    const unsubSubjectiveSessionRPE = onSnapshot(query(collection(db, 'sessionRpeLogs'), where('uid', '==', user.uid), limit(1000)), (snap) => {
+      useStore.setState({ sessionRpeLogs: snap.docs.map(d => d.data() as any) });
+      useStore.getState().computeEngineScores();
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'sessionRpeLogs'));
+
+    const unsubSubjectivePain = onSnapshot(query(collection(db, 'painLogs'), where('uid', '==', user.uid), limit(1000)), (snap) => {
+      useStore.setState({ painLogs: snap.docs.map(d => d.data() as any) });
+      useStore.getState().computeEngineScores();
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'painLogs'));
+
+    const unsubSubjectiveMenstrual = onSnapshot(query(collection(db, 'menstrualLogs'), where('uid', '==', user.uid), limit(1000)), (snap) => {
+      useStore.setState({ menstrualLogs: snap.docs.map(d => d.data() as any) });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'menstrualLogs'));
+
+    const unsubSubjectiveContext = onSnapshot(query(collection(db, 'contextLogs'), where('uid', '==', user.uid), limit(1000)), (snap) => {
+      useStore.setState({ contextLogs: snap.docs.map(d => d.data() as any) });
+      useStore.getState().computeEngineScores();
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'contextLogs'));
+
+    const unsubSubjectiveWeekly = onSnapshot(query(collection(db, 'weeklyScreeningLogs'), where('uid', '==', user.uid), limit(1000)), (snap) => {
+      useStore.setState({ weeklyScreeningLogs: snap.docs.map(d => d.data() as any) });
+      useStore.getState().computeEngineScores();
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'weeklyScreeningLogs'));
+
+    const unsubSubjectiveBypass = onSnapshot(query(collection(db, 'allergenBypassLogs'), where('uid', '==', user.uid), limit(1000)), (snap) => {
+      useStore.setState({ allergenBypassLogs: snap.docs.map(d => d.data() as any) });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'allergenBypassLogs'));
+
+    return () => {
+      unsubProfile();
+      unsubMetrics();
+      unsubActivities();
+      unsubLogs();
+      unsubSubjectiveMealLogs();
+      unsubSubjectiveRecipes();
+      unsubSubjectiveHooper();
+      unsubSubjectiveSessionRPE();
+      unsubSubjectivePain();
+      unsubSubjectiveMenstrual();
+      unsubSubjectiveContext();
+      unsubSubjectiveWeekly();
+      unsubSubjectiveBypass();
+    };
+  }, [user, isMigratedToCloud]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const signIn = async () => {
     try {

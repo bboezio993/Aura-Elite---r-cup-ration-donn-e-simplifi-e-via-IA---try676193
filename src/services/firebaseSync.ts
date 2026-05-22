@@ -5,19 +5,11 @@ import { NormalizedMetric, GarminActivity, GarminImportLog, UserProfile } from '
 /**
  * ARCHITECTURE DE DONNÉES / DATA PRIVACY
  * ====================================
- * Aura Elite maintient une isolation stricte entre les données physiologiques importées
- * et les données subjectives sensibles (douleurs actives, cycles menstruels, questionnaires).
- * 
- * Modèle Local-Only :
- * Les logs suivants ne sont JAMAIS synchronisés sur Firestore en version V1 :
- * - hooperLogs (Etat de forme, humeur)
- * - painLogs (Douleurs)
- * - menstrualLogs (Cycles, flux, douleurs localisées)
- * - contextLogs (Stress, nutrition perçue)
- * - mealLogs (Repas)
- * 
- * Ces données restent confinées à l'IndexedDB du navigateur (local-only).
- * Seules les métriques passives (Garmin) et le profil général sont synchronisés si configuré.
+ * Aura Elite Next est une application pleinement cloud-first.
+ * Toutes les données utilisateur, y compris les mesures biométriques passives, les activités
+ * Garmin, ainsi que les journaux subjectifs de nutrition, douleurs, cycles menstruels
+ * et questionnaires Hooper, sont synchronisées en temps réel de manière sécurisée et isolée par UID
+ * dans Firestore comme source de vérité. No IndexedDB acts only as a local offline cache.
  */
 
 export const syncMetricsToFirestore = async (metrics: NormalizedMetric[]) => {
@@ -218,3 +210,15 @@ export const syncAllergenBypassLogToFirestore = async (log: any) => {
     handleFirestoreError(e, OperationType.WRITE, `allergenBypassLogs/${log.id}`);
   }
 };
+
+export const syncFoodProductToFirestore = async (foodProduct: any) => {
+  if (!auth.currentUser) return;
+  try {
+    const clean = Object.fromEntries(Object.entries(foodProduct).filter(([_, v]) => v !== undefined));
+    const ref = doc(db, 'foodProducts', foodProduct.id);
+    await setDoc(ref, { ...clean, uid: auth.currentUser.uid }, { merge: true });
+  } catch (e) {
+    handleFirestoreError(e, OperationType.WRITE, `foodProducts/${foodProduct.id}`);
+  }
+};
+

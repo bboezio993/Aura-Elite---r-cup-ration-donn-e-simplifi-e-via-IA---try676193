@@ -50,6 +50,7 @@ export interface AppState {
   engineScores: EngineScores | null;
   recipes: Recipe[];
   allergenBypassLogs: AllergenBypassLog[];
+  isMigratedToCloud?: boolean;
   addMetric: (metric: NormalizedMetric) => void;
   addMetrics: (metrics: NormalizedMetric[]) => void;
   updateConnection: (source: DataSource, status: ConnectionState['status']) => void;
@@ -117,6 +118,7 @@ export const useStore = create<AppState>()(
       engineScores: null,
       recipes: [],
       allergenBypassLogs: [],
+      isMigratedToCloud: undefined,
       addMetric: (metric) => {
         const result = createValidatedMetric({
           source: metric.source,
